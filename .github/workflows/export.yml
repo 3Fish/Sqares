@@ -14,16 +14,16 @@ jobs:
       matrix:
         platform: [linux, windows, macos]
     container:
-      image: barichello/godot-ci:4.3
+      image: barichello/godot-ci:4.6
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup export templates
         run: |
-          mkdir -p ~/.local/share/godot/export_templates/4.3.stable
-          mv /root/.local/share/godot/export_templates/4.3.stable/* \
-             ~/.local/share/godot/export_templates/4.3.stable/
+          mkdir -p ~/.local/share/godot/export_templates/4.6.stable
+          mv /root/.local/share/godot/export_templates/4.6.stable/* \
+             ~/.local/share/godot/export_templates/4.6.stable/
 
       - name: Export ${{ matrix.platform }}
         run: |

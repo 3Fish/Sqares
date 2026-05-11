@@ -10,7 +10,7 @@ config/name="Sqares"
 config/description="A 2D Rogue-Like Arena Battle Shooter. Free, open-source, and mod-friendly."
 config/version="0.1.0"
 run/main_scene="res://scenes/ui/main_menu.tscn"
-config/features=PackedStringArray("4.3", "GL Compatibility")
+config/features=PackedStringArray("4.6", "GL Compatibility")
 config/icon="res://icon.svg"
 
 [autoload]
