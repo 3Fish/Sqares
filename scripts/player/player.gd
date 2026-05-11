@@ -27,8 +27,9 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
-	_tick_coyote(delta)
-	_was_on_floor = is_on_floor()  # snapshot before this frame's move_and_slide
+	var on_floor := is_on_floor()  # prev frame result — consistent reference for this tick
+	_tick_coyote(delta, on_floor)
+	_was_on_floor = on_floor
 	_tick_jump_buffer(delta)
 	_apply_gravity(delta)
 	_apply_horizontal()
@@ -40,9 +41,9 @@ func _physics_process(delta: float) -> void:
 # Movement helpers
 # ---------------------------------------------------------------------------
 
-func _tick_coyote(delta: float) -> void:
-	# Start coyote window the first frame we leave the floor without jumping.
-	if _was_on_floor and not is_on_floor() and velocity.y >= 0.0:
+func _tick_coyote(delta: float, on_floor: bool) -> void:
+	# _was_on_floor is frame N-2; on_floor is frame N-1 — transition is detectable.
+	if _was_on_floor and not on_floor and velocity.y >= 0.0:
 		_coyote_timer = COYOTE_TIME
 	_coyote_timer = maxf(_coyote_timer - delta, 0.0)
 
