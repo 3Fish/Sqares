@@ -11,6 +11,7 @@ jobs:
     name: Export (${{ matrix.platform }})
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         include:
           - platform: linux
@@ -27,9 +28,16 @@ jobs:
 
       - name: Setup export templates
         run: |
-          mkdir -p ~/.local/share/godot/export_templates/4.6.stable
-          mv /root/.local/share/godot/export_templates/4.6.stable/* \
-             ~/.local/share/godot/export_templates/4.6.stable/
+          TMPL_SRC="/root/.local/share/godot/export_templates/4.6.stable"
+          TMPL_DST="${HOME}/.local/share/godot/export_templates/4.6.stable"
+          mkdir -p "$TMPL_DST"
+          # Only move if source and destination resolve to different paths
+          # (when running as root, HOME=/root so they're identical — skip)
+          if [ "$(realpath "$TMPL_SRC" 2>/dev/null)" != "$(realpath "$TMPL_DST")" ]; then
+            mv "$TMPL_SRC"/* "$TMPL_DST"/
+          fi
+          # Verify templates exist before attempting export
+          ls "$TMPL_DST"/
 
       - name: Export ${{ matrix.platform }}
         run: |
