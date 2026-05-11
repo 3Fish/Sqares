@@ -28,12 +28,12 @@ func _ready() -> void:
 
 func _physics_process(delta: float) -> void:
 	_tick_coyote(delta)
+	_was_on_floor = is_on_floor()  # snapshot before this frame's move_and_slide
 	_tick_jump_buffer(delta)
 	_apply_gravity(delta)
 	_apply_horizontal()
 	_try_jump()
 	move_and_slide()
-	_was_on_floor = is_on_floor()
 
 
 # ---------------------------------------------------------------------------
