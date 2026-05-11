@@ -15,6 +15,13 @@ func register(stat_name: String, default_value: float) -> void:
 	_defaults[stat_name] = default_value
 
 
+func set_default(stat_name: String, default_value: float) -> void:
+	if not _defaults.has(stat_name):
+		push_warning("StatRegistry: stat '%s' not registered — use register() first." % stat_name)
+		return
+	_defaults[stat_name] = default_value
+
+
 func get_defaults() -> Dictionary:
 	return _defaults.duplicate()
 

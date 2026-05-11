@@ -28,8 +28,7 @@ jobs:
       - name: Export ${{ matrix.platform }}
         run: |
           mkdir -p dist/${{ matrix.platform }}
-          godot --headless --export-release "${{ matrix.platform }}" \
-                dist/${{ matrix.platform }}/sqares 2>&1
+          godot --headless --export-release "${{ matrix.platform }}" "dist/${{ matrix.platform }}/sqares" 2>&1
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

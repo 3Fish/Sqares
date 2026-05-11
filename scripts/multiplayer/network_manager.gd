@@ -34,8 +34,8 @@ func join_game(address: String, port: int = DEFAULT_PORT) -> Error:
 		connection_failed.emit()
 		return err
 	multiplayer.multiplayer_peer = peer
-	multiplayer.connected_to_server.connect(func(): client_connected.emit())
-	multiplayer.connection_failed.connect(func(): connection_failed.emit())
+	multiplayer.connected_to_server.connect(func(): client_connected.emit(), CONNECT_ONE_SHOT)
+	multiplayer.connection_failed.connect(func(): connection_failed.emit(), CONNECT_ONE_SHOT)
 	return OK
 
 

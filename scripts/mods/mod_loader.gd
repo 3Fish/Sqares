@@ -8,6 +8,11 @@ var _loaded_mods: Array = []
 
 
 func _ready() -> void:
+	# Deferred so all AutoLoad singletons finish _ready() before any mod code runs.
+	call_deferred("_load_all_mods")
+
+
+func _load_all_mods() -> void:
 	_load_mods_from("res://mods/")
 	_load_mods_from("user://mods/")
 

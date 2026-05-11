@@ -9,7 +9,7 @@ var state: State = State.MENU
 var round_number: int = 0
 var rounds_to_win: int = 5
 # player_id -> wins
-var win_counts: Dictionary = {}
+var win_counts: Dictionary[int, int] = {}
 
 signal state_changed(new_state: State)
 signal round_started(round_num: int)
