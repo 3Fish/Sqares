@@ -39,10 +39,13 @@ jobs:
           # Verify templates exist before attempting export
           ls "$TMPL_DST"/
 
+      - name: Import project assets
+        run: godot --headless --verbose --import 2>&1 || true
+
       - name: Export ${{ matrix.platform }}
         run: |
           mkdir -p dist/${{ matrix.platform }}
-          godot --headless --export-release "${{ matrix.platform }}" "dist/${{ matrix.platform }}/${{ matrix.output }}" 2>&1
+          godot --headless --verbose --export-release "${{ matrix.platform }}" "dist/${{ matrix.platform }}/${{ matrix.output }}" 2>&1
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
