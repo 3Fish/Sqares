@@ -16,6 +16,8 @@ size = Vector2(200, 24)
 
 [node name="TestMovement" type="Node2D"]
 
+[node name="Camera2D" type="Camera2D" parent="."]
+
 [node name="Background" type="Polygon2D" parent="."]
 polygon = PackedVector2Array(-640, -360, 640, -360, 640, 360, -640, 360)
 color = Color(0.102, 0.102, 0.18, 1)
