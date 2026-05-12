@@ -1,0 +1,18 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/combat/projectile.gd" id="1_proj"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_1"]
+radius = 4.0
+
+[node name="Projectile" type="CharacterBody2D"]
+collision_layer = 4
+collision_mask = 3
+script = ExtResource("1_proj")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_1")
+
+[node name="Visual" type="Polygon2D" parent="."]
+polygon = PackedVector2Array(-4, -4, 4, -4, 4, 4, -4, 4)
+color = Color(1, 0.878, 0.114, 1)

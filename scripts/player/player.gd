@@ -23,6 +23,12 @@ var _coyote_timer: float = 0.0
 var _jump_buffer_timer: float = 0.0
 var _was_on_floor: bool = false
 var _facing_dir: float = 1.0
+var _dead: bool = false
+
+@onready var health: Health = $Health
+@onready var weapon: Weapon = $Weapon
+
+signal player_died(player: Player, killer: Node)
 
 
 func _ready() -> void:
@@ -31,16 +37,23 @@ func _ready() -> void:
 	move_speed    = defaults.get("move_speed",    300.0)
 	jump_force    = defaults.get("jump_force",    550.0)
 	gravity_scale = defaults.get("gravity_scale", 1.0)
+	health.initialize(defaults)
+	weapon.apply_stats(defaults)
+	health.died.connect(_on_died)
 
 
 func _physics_process(delta: float) -> void:
-	var on_floor := is_on_floor()
+
+	if _dead:
+		return
+	var on_floor := is_on_floor()  # prev frame result — consistent reference for this tick
 	_tick_coyote(delta, on_floor)
 	_was_on_floor = on_floor
 	_tick_jump_buffer(delta)
 	_apply_gravity(delta)
 	_apply_horizontal(delta)
 	_try_jump()
+	_handle_shoot()
 	move_and_slide()
 
 
@@ -104,3 +117,61 @@ func _is_wall_sliding() -> bool:
 		return false
 	# True when the player is pressing into (not away from) the wall.
 	return sign(dir) == -sign(get_wall_normal().x)
+
+
+# ---------------------------------------------------------------------------
+# Combat helpers
+# ---------------------------------------------------------------------------
+
+func _handle_shoot() -> void:
+	if not Input.is_action_pressed("shoot"):
+		return
+	weapon.try_fire(_get_aim_direction())
+
+
+func _get_aim_direction() -> Vector2:
+	# Gamepad right stick takes priority over mouse.
+	var stick := Vector2(
+		Input.get_axis("aim_left", "aim_right"),
+		Input.get_axis("aim_up",   "aim_down"),
+	)
+	if stick.length_squared() > 0.25:
+		return stick.normalized()
+	var aim := get_global_mouse_position() - weapon.global_position
+	if aim == Vector2.ZERO:
+		return Vector2(_facing_dir, 0.0)
+	return aim.normalized()
+
+
+func take_damage(amount: float, attacker: Node = null) -> void:
+	health.take_damage(amount, attacker)
+
+
+func heal(amount: float) -> void:
+	health.heal(amount)
+
+
+func _on_died(killer: Node) -> void:
+	_dead = true
+	velocity = Vector2.ZERO
+	player_died.emit(self, killer)
+
+
+func respawn(spawn_position: Vector2) -> void:
+	_dead = false
+	global_position = spawn_position
+	velocity = Vector2.ZERO
+	health.reset()
+	set_physics_process(true)
+
+
+# ---------------------------------------------------------------------------
+# Public API (used by card effects and game manager)
+# ---------------------------------------------------------------------------
+
+func apply_stats(stats: Dictionary) -> void:
+	move_speed    = stats.get("move_speed",    move_speed)
+	jump_force    = stats.get("jump_force",    jump_force)
+	gravity_scale = stats.get("gravity_scale", gravity_scale)
+	weapon.apply_stats(stats)
+	health.apply_stats(stats)
