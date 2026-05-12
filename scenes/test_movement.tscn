@@ -1,0 +1,66 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/player/player.tscn" id="1_player"]
+
+[sub_resource type="RectangleShape2D" id="Shape_ground"]
+size = Vector2(1280, 32)
+
+[sub_resource type="RectangleShape2D" id="Shape_plat_left"]
+size = Vector2(240, 24)
+
+[sub_resource type="RectangleShape2D" id="Shape_plat_mid"]
+size = Vector2(160, 24)
+
+[sub_resource type="RectangleShape2D" id="Shape_plat_right"]
+size = Vector2(200, 24)
+
+[node name="TestMovement" type="Node2D"]
+
+[node name="Camera2D" type="Camera2D" parent="."]
+
+[node name="Background" type="Polygon2D" parent="."]
+polygon = PackedVector2Array(-640, -360, 640, -360, 640, 360, -640, 360)
+color = Color(0.102, 0.102, 0.18, 1)
+
+[node name="Player" parent="." instance=ExtResource("1_player")]
+position = Vector2(0, 200)
+
+[node name="Ground" type="StaticBody2D" parent="."]
+position = Vector2(0, 344)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Ground"]
+shape = SubResource("Shape_ground")
+
+[node name="Visual" type="Polygon2D" parent="Ground"]
+polygon = PackedVector2Array(-640, -16, 640, -16, 640, 16, -640, 16)
+color = Color(0.3, 0.3, 0.4, 1)
+
+[node name="PlatformLeft" type="StaticBody2D" parent="."]
+position = Vector2(-260, 220)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="PlatformLeft"]
+shape = SubResource("Shape_plat_left")
+
+[node name="Visual" type="Polygon2D" parent="PlatformLeft"]
+polygon = PackedVector2Array(-120, -12, 120, -12, 120, 12, -120, 12)
+color = Color(0.3, 0.3, 0.4, 1)
+
+[node name="PlatformMid" type="StaticBody2D" parent="."]
+position = Vector2(0, 100)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="PlatformMid"]
+shape = SubResource("Shape_plat_mid")
+
+[node name="Visual" type="Polygon2D" parent="PlatformMid"]
+polygon = PackedVector2Array(-80, -12, 80, -12, 80, 12, -80, 12)
+color = Color(0.3, 0.3, 0.4, 1)
+
+[node name="PlatformRight" type="StaticBody2D" parent="."]
+position = Vector2(280, 180)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="PlatformRight"]
+shape = SubResource("Shape_plat_right")
+
+[node name="Visual" type="Polygon2D" parent="PlatformRight"]
+polygon = PackedVector2Array(-100, -12, 100, -12, 100, 12, -100, 12)
+color = Color(0.3, 0.3, 0.4, 1)
