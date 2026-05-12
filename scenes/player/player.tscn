@@ -1,18 +1,25 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene format=3 uid="uid://b2ayikaw80r6i"]
 
-[ext_resource type="Script" path="res://scripts/player/player.gd" id="1_script"]
+[ext_resource type="Script" uid="uid://cs4pkmg6xyrs4" path="res://scripts/player/player.gd" id="1_script"]
+[ext_resource type="Script" uid="uid://d4expefwky06o" path="res://scripts/combat/health.gd" id="2_health"]
+[ext_resource type="Script" uid="uid://fk50ux1xfuqn" path="res://scripts/combat/weapon.gd" id="3_weapon"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_1"]
 size = Vector2(28, 40)
 
-[node name="Player" type="CharacterBody2D"]
+[node name="Player" type="CharacterBody2D" unique_id=166615170]
 collision_layer = 2
-collision_mask = 1
 script = ExtResource("1_script")
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1519259596]
 shape = SubResource("RectangleShape2D_1")
 
-[node name="Visual" type="Polygon2D" parent="."]
-polygon = PackedVector2Array(-14, -20, 14, -20, 14, 20, -14, 20)
+[node name="Visual" type="Polygon2D" parent="." unique_id=98318291]
 color = Color(0.867, 0.867, 0.867, 1)
+polygon = PackedVector2Array(-14, -20, 14, -20, 14, 20, -14, 20)
+
+[node name="Health" type="Node" parent="." unique_id=1289614941]
+script = ExtResource("2_health")
+
+[node name="Weapon" type="Node2D" parent="." unique_id=386809752]
+script = ExtResource("3_weapon")
