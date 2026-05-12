@@ -18,9 +18,13 @@ var _arena: Arena = null
 var _players: Array[Player] = []
 var _alive_ids: Array[int] = []
 var _match_over: bool = false
+var _round_ending: bool = false
+
+var _player_scene: PackedScene
 
 
 func _ready() -> void:
+	_player_scene = load(PLAYER_SCENE)
 	GameManager.setup_match(arena_id, player_count, wins_needed)
 	_start_round()
 
@@ -40,6 +44,7 @@ func _start_round() -> void:
 
 
 func _clear() -> void:
+	_round_ending = false
 	if is_instance_valid(_arena):
 		_arena.queue_free()
 		_arena = null
@@ -62,7 +67,7 @@ func _spawn_arena() -> void:
 func _spawn_players() -> void:
 	var spawn_points: Array[Vector2] = _arena.get_spawn_points() if _arena else []
 	for i in player_count:
-		var p: Player = load(PLAYER_SCENE).instantiate()
+		var p: Player = _player_scene.instantiate()
 		_players_container.add_child(p)
 		_players.append(p)
 		_alive_ids.append(i)
@@ -74,11 +79,12 @@ func _spawn_players() -> void:
 
 func _on_player_died(_player: Player, _killer: Node, player_id: int) -> void:
 	_alive_ids.erase(player_id)
-	if _alive_ids.size() <= 1:
+	if _alive_ids.size() <= 1 and not _round_ending:
 		_end_round()
 
 
 func _end_round() -> void:
+	_round_ending = true
 	var loser_ids: Array = []
 	var winner_id := -1
 	for i in _players.size():
