@@ -7,6 +7,12 @@ const COYOTE_TIME := 0.12
 const JUMP_BUFFER_TIME := 0.12
 ## Wall-slide multiplier applied to gravity when pressing into a wall mid-air.
 const WALL_SLIDE_GRAVITY_MULT := 0.2
+## Ground acceleration in pixels/s².
+const ACCELERATION := 1800.0
+## Deceleration (friction) when no input, in pixels/s².
+const FRICTION := 2400.0
+## Terminal fall speed in pixels/s.
+const MAX_FALL_SPEED := 900.0
 
 var move_speed: float
 var jump_force: float
@@ -33,7 +39,7 @@ func _physics_process(delta: float) -> void:
 	_was_on_floor = on_floor
 	_tick_jump_buffer(delta)
 	_apply_gravity(delta)
-	_apply_horizontal()
+	_apply_horizontal(delta)
 	_try_jump()
 	move_and_slide()
 
@@ -63,14 +69,16 @@ func _apply_gravity(delta: float) -> void:
 	if _is_wall_sliding():
 		velocity.y = maxf(velocity.y, 0.0)  # kill upward momentum on wall contact
 		grav_mult *= WALL_SLIDE_GRAVITY_MULT
-	velocity.y += _base_gravity * grav_mult * delta
+	velocity.y = minf(velocity.y + _base_gravity * grav_mult * delta, MAX_FALL_SPEED)
 
 
-func _apply_horizontal() -> void:
+func _apply_horizontal(delta: float) -> void:
 	var dir := Input.get_axis("move_left", "move_right")
-	velocity.x = dir * move_speed
 	if dir != 0.0:
+		velocity.x = move_toward(velocity.x, dir * move_speed, ACCELERATION * delta)
 		_facing_dir = sign(dir)
+	else:
+		velocity.x = move_toward(velocity.x, 0.0, FRICTION * delta)
 
 
 func _try_jump() -> void:
