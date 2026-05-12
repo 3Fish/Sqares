@@ -14,7 +14,7 @@ func _ready() -> void:
 
 
 func _on_play_pressed() -> void:
-	pass  # Implemented in feature/05-round-match-flow
+	get_tree().change_scene_to_file("res://scenes/match.tscn")
 
 
 func _on_settings_pressed() -> void:
