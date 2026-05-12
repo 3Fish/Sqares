@@ -16,6 +16,13 @@ var _base_gravity: float
 var _coyote_timer: float = 0.0
 var _jump_buffer_timer: float = 0.0
 var _was_on_floor: bool = false
+var _facing_dir: float = 1.0
+var _dead: bool = false
+
+@onready var health: Health = $Health
+@onready var weapon: Weapon = $Weapon
+
+signal player_died(player: Player, killer: Node)
 
 
 func _ready() -> void:
@@ -24,9 +31,14 @@ func _ready() -> void:
 	move_speed    = defaults.get("move_speed",    300.0)
 	jump_force    = defaults.get("jump_force",    550.0)
 	gravity_scale = defaults.get("gravity_scale", 1.0)
+	health.initialize(defaults)
+	weapon.apply_stats(defaults)
+	health.died.connect(_on_died)
 
 
 func _physics_process(delta: float) -> void:
+	if _dead:
+		return
 	var on_floor := is_on_floor()  # prev frame result — consistent reference for this tick
 	_tick_coyote(delta, on_floor)
 	_was_on_floor = on_floor
@@ -34,6 +46,7 @@ func _physics_process(delta: float) -> void:
 	_apply_gravity(delta)
 	_apply_horizontal()
 	_try_jump()
+	_handle_shoot()
 	move_and_slide()
 
 
@@ -60,17 +73,28 @@ func _apply_gravity(delta: float) -> void:
 		return
 	var grav_mult := gravity_scale
 	if _is_wall_sliding():
+		velocity.y = maxf(velocity.y, 0.0)  # kill upward momentum on wall contact
 		grav_mult *= WALL_SLIDE_GRAVITY_MULT
 	velocity.y += _base_gravity * grav_mult * delta
 
 
 func _apply_horizontal() -> void:
-	velocity.x = Input.get_axis("move_left", "move_right") * move_speed
+	var dir := Input.get_axis("move_left", "move_right")
+	velocity.x = dir * move_speed
+	if dir != 0.0:
+		_facing_dir = sign(dir)
 
 
 func _try_jump() -> void:
+	if _jump_buffer_timer <= 0.0:
+		return
+	if _is_wall_sliding():
+		velocity.y = -jump_force
+		velocity.x = get_wall_normal().x * move_speed
+		_jump_buffer_timer = 0.0
+		return
 	var can_jump := is_on_floor() or _coyote_timer > 0.0
-	if _jump_buffer_timer > 0.0 and can_jump:
+	if can_jump:
 		velocity.y = -jump_force
 		_coyote_timer = 0.0
 		_jump_buffer_timer = 0.0
@@ -87,6 +111,53 @@ func _is_wall_sliding() -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Combat helpers
+# ---------------------------------------------------------------------------
+
+func _handle_shoot() -> void:
+	if not Input.is_action_pressed("shoot"):
+		return
+	weapon.try_fire(_get_aim_direction())
+
+
+func _get_aim_direction() -> Vector2:
+	# Gamepad right stick takes priority over mouse.
+	var stick := Vector2(
+		Input.get_axis("aim_left", "aim_right"),
+		Input.get_axis("aim_up",   "aim_down"),
+	)
+	if stick.length_squared() > 0.25:
+		return stick.normalized()
+	var aim := get_global_mouse_position() - weapon.global_position
+	if aim == Vector2.ZERO:
+		return Vector2(_facing_dir, 0.0)
+	return aim.normalized()
+
+
+func take_damage(amount: float, attacker: Node = null) -> void:
+	health.take_damage(amount, attacker)
+
+
+func heal(amount: float) -> void:
+	health.heal(amount)
+
+
+func _on_died(killer: Node) -> void:
+	_dead = true
+	velocity = Vector2.ZERO
+	set_physics_process(false)
+	player_died.emit(self, killer)
+
+
+func respawn(spawn_position: Vector2) -> void:
+	_dead = false
+	global_position = spawn_position
+	velocity = Vector2.ZERO
+	health.reset()
+	set_physics_process(true)
+
+
+# ---------------------------------------------------------------------------
 # Public API (used by card effects and game manager)
 # ---------------------------------------------------------------------------
 
@@ -94,3 +165,5 @@ func apply_stats(stats: Dictionary) -> void:
 	move_speed    = stats.get("move_speed",    move_speed)
 	jump_force    = stats.get("jump_force",    jump_force)
 	gravity_scale = stats.get("gravity_scale", gravity_scale)
+	weapon.apply_stats(stats)
+	health.apply_stats(stats)
