@@ -2,7 +2,7 @@ extends CharacterBody2D
 class_name Projectile
 
 ## Fraction of world gravity applied to bullets, giving them an arc.
-const GRAVITY_SCALE := 1
+const GRAVITY_SCALE := 1.0
 
 var damage: float = 25.0
 var lifesteal: float = 0.0

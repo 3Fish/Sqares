@@ -43,7 +43,6 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
-
 	if _dead:
 		return
 	var on_floor := is_on_floor()  # prev frame result — consistent reference for this tick
@@ -92,7 +91,6 @@ func _apply_horizontal(delta: float) -> void:
 		_facing_dir = sign(dir)
 	else:
 		velocity.x = move_toward(velocity.x, 0.0, FRICTION * delta)
-
 
 
 func _try_jump() -> void:

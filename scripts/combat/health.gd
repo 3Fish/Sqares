@@ -20,6 +20,7 @@ func initialize(stats: Dictionary) -> void:
 
 func apply_stats(stats: Dictionary) -> void:
 	max_hp = stats.get("max_health", max_hp)
+	current_hp = minf(current_hp, max_hp)
 	shield_charges = int(stats.get("shield_charges", float(shield_charges)))
 
 
