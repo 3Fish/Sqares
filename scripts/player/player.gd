@@ -1,6 +1,9 @@
 extends CharacterBody2D
 class_name Player
 
+const Health := preload("res://scripts/combat/health.gd")
+const Weapon := preload("res://scripts/combat/weapon.gd")
+
 ## Coyote time: grace window after walking off a ledge where jumping still works.
 const COYOTE_TIME := 0.12
 ## Jump buffer: queued jump fires on landing if pressed this many seconds early.
