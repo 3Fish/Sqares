@@ -13,7 +13,7 @@ var _projectile_scene: PackedScene
 
 
 func _ready() -> void:
-	_projectile_scene = load("res://scenes/combat/projectile.tscn")
+	_projectile_scene = preload("res://scenes/combat/projectile.tscn")
 
 
 func apply_stats(stats: Dictionary) -> void:

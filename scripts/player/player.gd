@@ -155,6 +155,7 @@ func heal(amount: float) -> void:
 func _on_died(killer: Node) -> void:
 	_dead = true
 	velocity = Vector2.ZERO
+	set_physics_process(false)
 	player_died.emit(self, killer)
 
 

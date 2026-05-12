@@ -19,6 +19,7 @@ color = Color(0.867, 0.867, 0.867, 1)
 polygon = PackedVector2Array(-14, -20, 14, -20, 14, 20, -14, 20)
 
 [node name="Health" type="Node" parent="." unique_id=1289614941]
+
 script = ExtResource("2_health")
 
 [node name="Weapon" type="Node2D" parent="." unique_id=386809752]
