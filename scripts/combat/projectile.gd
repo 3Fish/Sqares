@@ -3,8 +3,6 @@ class_name Projectile
 
 ## Fraction of world gravity applied to bullets, giving them an arc.
 const GRAVITY_SCALE := 0.35
-## Seconds after spawn during which the bullet cannot collide with its shooter.
-const SHOOTER_GRACE_TIME := 0.2
 
 var damage: float = 25.0
 var lifesteal: float = 0.0
@@ -12,7 +10,6 @@ var bounces_remaining: int = 0
 var shooter: Node = null
 
 var _lifetime: float = 6.0
-var _shooter_grace: float = 0.0
 var _base_gravity: float
 
 
@@ -31,13 +28,10 @@ func setup(
 	bounces_remaining = p_bounces
 	lifesteal         = p_lifesteal
 	shooter           = p_shooter
-	_shooter_grace    = SHOOTER_GRACE_TIME
 
 
 func _ready() -> void:
 	_base_gravity = ProjectSettings.get_setting("physics/2d/default_gravity", 980.0)
-	if is_instance_valid(shooter) and shooter is PhysicsBody2D:
-		add_collision_exception_with(shooter)
 
 
 func _physics_process(delta: float) -> void:
@@ -47,11 +41,6 @@ func _physics_process(delta: float) -> void:
 		return
 
 	velocity.y += _base_gravity * GRAVITY_SCALE * delta
-
-	if _shooter_grace > 0.0:
-		_shooter_grace -= delta
-		if _shooter_grace <= 0.0 and is_instance_valid(shooter) and shooter is PhysicsBody2D:
-			remove_collision_exception_with(shooter)
 
 	var collision := move_and_collide(velocity * delta)
 	if not collision:
