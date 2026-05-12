@@ -39,6 +39,5 @@ func try_fire(direction: Vector2) -> void:
 func _spawn_projectile(direction: Vector2) -> void:
 	var proj: Projectile = _projectile_scene.instantiate()
 	proj.setup(direction, bullet_speed, damage, bullet_scale, bullet_bounces, lifesteal, get_parent())
-	# Spawn offset prevents immediate self-collision.
-	proj.global_position = global_position + direction.normalized() * 24.0
+	proj.global_position = global_position + direction.normalized() * 48.0
 	get_tree().current_scene.add_child(proj)
