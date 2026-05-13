@@ -65,6 +65,7 @@ func _spawn_players() -> void:
 	var spawn_points: Array[Vector2] = _arena.get_spawn_points() if _arena else []
 	for i in player_count:
 		var p: Player = PLAYER_SCENE.instantiate()
+		p.player_id = i
 		_players_container.add_child(p)
 		_players.append(p)
 		_alive_ids.append(i)
