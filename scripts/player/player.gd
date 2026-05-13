@@ -43,6 +43,7 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
+
 	if _dead:
 		return
 	var on_floor := is_on_floor()  # prev frame result — consistent reference for this tick
