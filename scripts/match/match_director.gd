@@ -23,7 +23,7 @@ var _round_ending: bool = false
 
 func _ready() -> void:
 	GameManager.setup_match(arena_id, player_count, wins_needed)
-	_start_round()
+	_start_round.call_deferred()
 
 
 func _start_round() -> void:
