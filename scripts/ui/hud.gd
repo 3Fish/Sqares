@@ -87,6 +87,6 @@ func _label(pos: Vector2, sz: Vector2, font_size: int) -> Label:
 	var lbl := Label.new()
 	lbl.position = pos
 	lbl.size = sz
-	lbl.theme_override_font_sizes["font_size"] = font_size
+	lbl.add_theme_font_size_override("font_size", font_size)
 	add_child(lbl)
 	return lbl
