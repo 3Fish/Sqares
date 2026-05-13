@@ -1,6 +1,7 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=10 format=3]
 
 [ext_resource type="PackedScene" path="res://scenes/player/player.tscn" id="1_player"]
+[ext_resource type="Script" path="res://scripts/combat/dummy_target.gd" id="2_dummy"]
 [ext_resource type="Script" path="res://scripts/combat/dummy_target.gd" id="2_dummy"]
 
 [sub_resource type="RectangleShape2D" id="Shape_ground"]
@@ -24,6 +25,15 @@ size = Vector2(32, 720)
 [sub_resource type="RectangleShape2D" id="Shape_wall_right"]
 size = Vector2(32, 720)
 
+[sub_resource type="RectangleShape2D" id="Shape_dummy"]
+size = Vector2(40, 60)
+
+[sub_resource type="RectangleShape2D" id="Shape_wall_left"]
+size = Vector2(32, 720)
+
+[sub_resource type="RectangleShape2D" id="Shape_wall_right"]
+size = Vector2(32, 720)
+
 [node name="TestMovement" type="Node2D"]
 
 [node name="Camera2D" type="Camera2D" parent="."]
@@ -33,6 +43,7 @@ polygon = PackedVector2Array(-640, -360, 640, -360, 640, 360, -640, 360)
 color = Color(0.102, 0.102, 0.18, 1)
 
 [node name="Player" parent="." instance=ExtResource("1_player")]
+position = Vector2(-200, 200)
 position = Vector2(-200, 200)
 
 [node name="Ground" type="StaticBody2D" parent="."]

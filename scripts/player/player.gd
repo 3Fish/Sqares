@@ -43,7 +43,6 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
-
 	if _dead:
 		return
 	var on_floor := is_on_floor()  # prev frame result — consistent reference for this tick
@@ -154,6 +153,7 @@ func heal(amount: float) -> void:
 func _on_died(killer: Node) -> void:
 	_dead = true
 	velocity = Vector2.ZERO
+	set_physics_process(false)
 	player_died.emit(self, killer)
 
 
