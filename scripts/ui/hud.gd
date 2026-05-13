@@ -25,7 +25,7 @@ func _ready() -> void:
 	_center_label = _label(Vector2(290, 280), Vector2(700, 160), 38)
 	_center_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_center_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_center_label.autowrap_mode = TextServer.AUTOWRAP_WORD_ONLY
+	_center_label.autowrap_mode = TextServer.AUTOWRAP_WORD
 	_center_label.visible = false
 
 
