@@ -6,6 +6,12 @@ extends SqaresModBase
 
 func _on_load() -> void:
 	_register_base_stats()
+	_register_arenas()
+
+
+func _register_arenas() -> void:
+	LevelRegistry.register("crossroads", preload("res://scenes/arena/arena_crossroads.tscn"))
+	LevelRegistry.register("highrise",   preload("res://scenes/arena/arena_highrise.tscn"))
 
 
 func _register_base_stats() -> void:
