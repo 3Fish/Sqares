@@ -14,6 +14,7 @@ const FRICTION := 2400.0
 ## Terminal fall speed in pixels/s.
 const MAX_FALL_SPEED := 900.0
 
+var player_id: int = 0
 var move_speed: float
 var jump_force: float
 var gravity_scale: float
@@ -68,7 +69,7 @@ func _tick_coyote(delta: float, on_floor: bool) -> void:
 
 
 func _tick_jump_buffer(delta: float) -> void:
-	if Input.is_action_just_pressed("jump"):
+	if Input.is_action_just_pressed("p%d_jump" % (player_id + 1)):
 		_jump_buffer_timer = JUMP_BUFFER_TIME
 	_jump_buffer_timer = maxf(_jump_buffer_timer - delta, 0.0)
 
@@ -85,7 +86,7 @@ func _apply_gravity(delta: float) -> void:
 
 
 func _apply_horizontal(delta: float) -> void:
-	var dir := Input.get_axis("move_left", "move_right")
+	var dir := Input.get_axis("p%d_move_left" % (player_id + 1), "p%d_move_right" % (player_id + 1))
 	if dir != 0.0:
 		velocity.x = move_toward(velocity.x, dir * move_speed, ACCELERATION * delta)
 		_facing_dir = sign(dir)
@@ -111,7 +112,7 @@ func _try_jump() -> void:
 func _is_wall_sliding() -> bool:
 	if not is_on_wall() or is_on_floor():
 		return false
-	var dir := Input.get_axis("move_left", "move_right")
+	var dir := Input.get_axis("p%d_move_left" % (player_id + 1), "p%d_move_right" % (player_id + 1))
 	if dir == 0.0:
 		return false
 	# True when the player is pressing into (not away from) the wall.
@@ -123,7 +124,7 @@ func _is_wall_sliding() -> bool:
 # ---------------------------------------------------------------------------
 
 func _handle_shoot() -> void:
-	if not Input.is_action_pressed("shoot"):
+	if not Input.is_action_pressed("p%d_shoot" % (player_id + 1)):
 		return
 	weapon.try_fire(_get_aim_direction())
 
@@ -131,8 +132,8 @@ func _handle_shoot() -> void:
 func _get_aim_direction() -> Vector2:
 	# Gamepad right stick takes priority over mouse.
 	var stick := Vector2(
-		Input.get_axis("aim_left", "aim_right"),
-		Input.get_axis("aim_up",   "aim_down"),
+		Input.get_axis("p%d_aim_left" % (player_id + 1), "p%d_aim_right" % (player_id + 1)),
+		Input.get_axis("p%d_aim_up" % (player_id + 1),   "p%d_aim_down" % (player_id + 1)),
 	)
 	if stick.length_squared() > 0.25:
 		return stick.normalized()

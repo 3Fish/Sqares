@@ -16,8 +16,8 @@ func _ready() -> void:
 func get_spawn_points() -> Array[Vector2]:
 	var points: Array[Vector2] = []
 	for child in get_children():
-		if child.is_in_group("spawn_point"):
-			points.append(child.global_position)
+		if child is Node2D and child.name.begins_with("Spawn"):
+			points.append(to_global(child.position))
 	points.shuffle()
 	return points
 

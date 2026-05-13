@@ -48,7 +48,7 @@ func _physics_process(delta: float) -> void:
 
 	var collider := collision.get_collider()
 	if collider.has_method("take_damage"):
-		collider.take_damage(damage, shooter)
+		collider.take_damage(damage, shooter if is_instance_valid(shooter) else null)
 		if lifesteal > 0.0 and is_instance_valid(shooter) and shooter.has_method("heal"):
 			shooter.heal(lifesteal)
 		queue_free()

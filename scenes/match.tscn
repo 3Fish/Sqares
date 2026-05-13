@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/match/match_director.gd" id="1_director"]
+[ext_resource type="Script" path="res://scripts/ui/hud.gd" id="2_hud"]
+
+[node name="Match" type="Node2D"]
+
+[node name="ArenaContainer" type="Node2D" parent="."]
+
+[node name="PlayersContainer" type="Node2D" parent="."]
+
+[node name="MatchDirector" type="Node" parent="."]
+script = ExtResource("1_director")
+
+[node name="HUD" type="CanvasLayer" parent="."]
+script = ExtResource("2_hud")
