@@ -4,7 +4,7 @@ class_name MatchDirector
 ## Orchestrates round lifecycle: spawn → fight → end → next round / match end.
 ## Lives inside scenes/match.tscn; talks to GameManager for win tracking.
 
-const PLAYER_SCENE := "res://scenes/player/player.tscn"
+const PLAYER_SCENE: PackedScene = preload("res://scenes/player/player.tscn")
 
 @export var arena_id: String = "crossroads"
 @export var player_count: int = 2
@@ -20,11 +20,8 @@ var _alive_ids: Array[int] = []
 var _match_over: bool = false
 var _round_ending: bool = false
 
-var _player_scene: PackedScene
-
 
 func _ready() -> void:
-	_player_scene = load(PLAYER_SCENE)
 	GameManager.setup_match(arena_id, player_count, wins_needed)
 	_start_round()
 
@@ -67,7 +64,7 @@ func _spawn_arena() -> void:
 func _spawn_players() -> void:
 	var spawn_points: Array[Vector2] = _arena.get_spawn_points() if _arena else []
 	for i in player_count:
-		var p: Player = _player_scene.instantiate()
+		var p: Player = PLAYER_SCENE.instantiate()
 		_players_container.add_child(p)
 		_players.append(p)
 		_alive_ids.append(i)
