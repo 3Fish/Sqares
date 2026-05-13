@@ -36,7 +36,7 @@ func _start_round() -> void:
 	_spawn_players()
 	_hud.show_center("Round %d" % GameManager.round_number)
 	await get_tree().create_timer(1.5).timeout
-	if _match_over:
+	if _match_over or _round_ending:
 		return
 	GameManager.begin_fight()
 	_hud.hide_center()
