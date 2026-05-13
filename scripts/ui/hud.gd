@@ -4,7 +4,7 @@ class_name HUD
 ## In-game HUD: health readout, win pips, round number, center announcements.
 ## All UI nodes are built in code so there's no separate .tscn needed.
 
-const P_COLORS := [
+const P_COLORS: Array[Color] = [
 	Color(0.4, 0.7, 1.0),
 	Color(1.0, 0.5, 0.3),
 	Color(0.4, 1.0, 0.5),
@@ -46,7 +46,7 @@ func register_player(player_id: int, player: Player) -> void:
 		return
 	var pos := Vector2(16, 16) if player_id % 2 == 0 else Vector2(1064, 16)
 	var align := HORIZONTAL_ALIGNMENT_LEFT if player_id % 2 == 0 else HORIZONTAL_ALIGNMENT_RIGHT
-	var color := P_COLORS[mini(player_id, P_COLORS.size() - 1)]
+	var color: Color = P_COLORS[mini(player_id, P_COLORS.size() - 1)]
 
 	var hp := _label(pos, Vector2(200, 24), 16)
 	hp.horizontal_alignment = align
