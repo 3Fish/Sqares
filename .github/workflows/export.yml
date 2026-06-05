@@ -1,0 +1,54 @@
+name: Export
+
+on:
+  push:
+    branches: ["claude/rogue-like-shooter-game-tCOTO", "main"]
+  pull_request:
+    branches: ["claude/rogue-like-shooter-game-tCOTO", "main"]
+
+jobs:
+  export:
+    name: Export (${{ matrix.platform }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux
+            output: sqares.x86_64
+          - platform: windows
+            output: sqares.exe
+          - platform: macos
+            output: sqares.zip
+    container:
+      image: barichello/godot-ci:4.6
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup export templates
+        run: |
+          TMPL_SRC="/root/.local/share/godot/export_templates/4.6.stable"
+          TMPL_DST="${HOME}/.local/share/godot/export_templates/4.6.stable"
+          mkdir -p "$TMPL_DST"
+          # Only move if source and destination resolve to different paths
+          # (when running as root, HOME=/root so they're identical — skip)
+          if [ "$(realpath "$TMPL_SRC" 2>/dev/null)" != "$(realpath "$TMPL_DST")" ]; then
+            mv "$TMPL_SRC"/* "$TMPL_DST"/
+          fi
+          # Verify templates exist before attempting export
+          ls "$TMPL_DST"/
+
+      - name: Import project assets
+        run: godot --headless --verbose --import 2>&1 || true
+
+      - name: Export ${{ matrix.platform }}
+        run: |
+          mkdir -p dist/${{ matrix.platform }}
+          godot --headless --verbose --export-release "${{ matrix.platform }}" "dist/${{ matrix.platform }}/${{ matrix.output }}" 2>&1
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sqares-${{ matrix.platform }}
+          path: dist/${{ matrix.platform }}/
