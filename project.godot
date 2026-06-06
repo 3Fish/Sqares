@@ -27,6 +27,7 @@ LevelRegistry="*res://scripts/mods/level_registry.gd"
 GameModeRegistry="*res://scripts/mods/game_mode_registry.gd"
 UIManager="*res://scripts/mods/ui_manager.gd"
 PlayerActionRegistry="*res://scripts/mods/player_action_registry.gd"
+AudioManager="*res://scripts/audio/audio_manager.gd"
 NetworkManager="*res://scripts/multiplayer/network_manager.gd"
 
 [display]

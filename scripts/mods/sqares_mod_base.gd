@@ -16,3 +16,11 @@ func _on_load() -> void:
 ## `Dictionary` describing one (see `Card.create`).
 func register_card(card) -> void:
 	CardRegistry.register_card(card)
+
+
+func register_sound(sound_name: String, stream: AudioStream) -> void:
+	AudioManager.register_sound(sound_name, stream)
+
+
+func register_music(track_name: String, stream: AudioStream) -> void:
+	AudioManager.register_music(track_name, stream)
