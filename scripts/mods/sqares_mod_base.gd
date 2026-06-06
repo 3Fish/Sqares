@@ -12,5 +12,7 @@ func _on_load() -> void:
 	pass
 
 
-func register_card(data: Dictionary) -> void:
-	CardRegistry.register_card(data)
+## Registers a card with the CardRegistry. Accepts either a `Card` or a plain
+## `Dictionary` describing one (see `Card.create`).
+func register_card(card) -> void:
+	CardRegistry.register_card(card)
