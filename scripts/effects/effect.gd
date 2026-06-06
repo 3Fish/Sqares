@@ -1,0 +1,44 @@
+class_name CardEffect extends RefCounted
+
+## Base class for per-card custom effects (#20).
+##
+## A `Card` references one of these via its `effect` field. The `EffectEngine`
+## attaches the effect to a player and invokes the lifecycle hooks below in
+## response to round and combat events. Every hook is a no-op by default, so a
+## concrete effect overrides only the moments it cares about.
+##
+## Each hook receives an `EffectContext` bundling the references relevant to
+## that moment (player, weapon, projectile, target) plus an `event` dictionary
+## of hook-specific scalars. See `docs/effect_engine.md` for the mod-author
+## guide and worked examples.
+
+## Optional stable identifier, mostly for debugging / inspection. Not required.
+var id: String = ""
+
+
+## Fired once, the moment the effect is attached to a player (e.g. when a losing
+## player picks the card). Use it for one-shot stat grants — typically
+## `ctx.player.apply_stats({...})`.
+func on_apply(_ctx: EffectContext) -> void:
+	pass
+
+
+## Fired at the start of every round while the effect is active. Use it for
+## per-round resets or bonuses that stack each round. `ctx.event.round` carries
+## the round number.
+func on_round_start(_ctx: EffectContext) -> void:
+	pass
+
+
+## Fired when the owning player fires a shot, immediately after the projectile
+## spawns. `ctx.projectile` is the freshly spawned bullet (mutable),
+## `ctx.weapon` the firing weapon, and `ctx.event.direction` the aim vector.
+func on_shoot(_ctx: EffectContext) -> void:
+	pass
+
+
+## Fired when one of the owning player's projectiles strikes a target.
+## `ctx.target` is what was hit, `ctx.projectile` the bullet, and
+## `ctx.event.damage` the damage that was dealt.
+func on_hit(_ctx: EffectContext) -> void:
+	pass
