@@ -49,6 +49,12 @@ jobs:
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
+        # The export step above is the actual validation (does the project
+        # build for this platform?) and has already succeeded by this point.
+        # Don't fail the job over a storage-quota hiccup in this convenience
+        # upload of the resulting binary.
+        continue-on-error: true
         with:
           name: sqares-${{ matrix.platform }}
           path: dist/${{ matrix.platform }}/
+          retention-days: 3
