@@ -38,6 +38,7 @@ func _ready() -> void:
 	stats = PlayerStats.new(StatRegistry.get_defaults())
 	_sync_stats(true)
 	health.died.connect(_on_died)
+	add_to_group(Projectile.TARGET_GROUP)
 
 
 func _physics_process(delta: float) -> void:
@@ -148,10 +149,20 @@ func heal(amount: float) -> void:
 	health.heal(amount)
 
 
+## Applies an external impulse (e.g. a knocking-back projectile hit). Ignored
+## while dead so a killing blow doesn't fling a frozen corpse.
+func apply_knockback(impulse: Vector2) -> void:
+	if _dead:
+		return
+	velocity += impulse
+
+
 func _on_died(killer: Node) -> void:
 	_dead = true
 	velocity = Vector2.ZERO
 	set_physics_process(false)
+	# Dead players stop being homing/knockback targets until they respawn.
+	remove_from_group(Projectile.TARGET_GROUP)
 	player_died.emit(self, killer)
 
 
@@ -161,6 +172,8 @@ func respawn(spawn_position: Vector2) -> void:
 	velocity = Vector2.ZERO
 	health.reset()
 	set_physics_process(true)
+	if not is_in_group(Projectile.TARGET_GROUP):
+		add_to_group(Projectile.TARGET_GROUP)
 
 
 # ---------------------------------------------------------------------------
