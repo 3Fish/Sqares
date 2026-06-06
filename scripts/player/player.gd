@@ -15,6 +15,7 @@ const FRICTION := 2400.0
 const MAX_FALL_SPEED := 900.0
 
 var player_id: int = 0
+var stats: PlayerStats
 var move_speed: float
 var jump_force: float
 var gravity_scale: float
@@ -34,12 +35,8 @@ signal player_died(player: Player, killer: Node)
 
 func _ready() -> void:
 	_base_gravity = ProjectSettings.get_setting("physics/2d/default_gravity", 980.0)
-	var defaults := StatRegistry.get_defaults()
-	move_speed    = defaults.get("move_speed",    300.0)
-	jump_force    = defaults.get("jump_force",    550.0)
-	gravity_scale = defaults.get("gravity_scale", 1.0)
-	health.initialize(defaults)
-	weapon.apply_stats(defaults)
+	stats = PlayerStats.new(StatRegistry.get_defaults())
+	_sync_stats(true)
 	health.died.connect(_on_died)
 	add_to_group(Projectile.TARGET_GROUP)
 
@@ -183,9 +180,26 @@ func respawn(spawn_position: Vector2) -> void:
 # Public API (used by card effects and game manager)
 # ---------------------------------------------------------------------------
 
-func apply_stats(stats: Dictionary) -> void:
-	move_speed    = stats.get("move_speed",    move_speed)
-	jump_force    = stats.get("jump_force",    jump_force)
-	gravity_scale = stats.get("gravity_scale", gravity_scale)
-	weapon.apply_stats(stats)
-	health.apply_stats(stats)
+## Merges overrides into this player's runtime stats and propagates to components.
+## Pass an empty dict to recompute from the current stats without changing values.
+func apply_stats(overrides: Dictionary) -> void:
+	stats.merge(overrides)
+	_sync_stats()
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+## Propagates the current PlayerStats to all component nodes.
+## Pass initialize_health=true at round start to reset HP; false during mid-match card apply.
+func _sync_stats(initialize_health: bool = false) -> void:
+	var d := stats.to_dict()
+	move_speed    = d.get("move_speed",    300.0)
+	jump_force    = d.get("jump_force",    550.0)
+	gravity_scale = d.get("gravity_scale", 1.0)
+	if initialize_health:
+		health.initialize(d)
+	else:
+		health.apply_stats(d)
+	weapon.apply_stats(d)
