@@ -131,3 +131,11 @@ position = Vector2(-400, 242)
 [node name="SpawnRight" type="Node2D" parent="."]
 groups = ["spawn_point"]
 position = Vector2(400, 242)
+
+[node name="SpawnMidLeft" type="Node2D" parent="."]
+groups = ["spawn_point"]
+position = Vector2(-220, 42)
+
+[node name="SpawnMidRight" type="Node2D" parent="."]
+groups = ["spawn_point"]
+position = Vector2(220, 42)

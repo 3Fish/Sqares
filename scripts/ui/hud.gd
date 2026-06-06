@@ -44,8 +44,13 @@ func register_player(player_id: int, player: Player) -> void:
 	_players[player_id] = player
 	if _hp_labels.has(player_id):
 		return
-	var pos := Vector2(16, 16) if player_id % 2 == 0 else Vector2(1064, 16)
-	var align := HORIZONTAL_ALIGNMENT_LEFT if player_id % 2 == 0 else HORIZONTAL_ALIGNMENT_RIGHT
+	# Even ids go top-left, odd ids top-right; each extra player on a side stacks
+	# downward so 3- and 4-player readouts don't overlap P1 / P2.
+	var on_left := player_id % 2 == 0
+	var row := player_id / 2
+	var y := 16.0 + float(row) * 56.0
+	var pos := Vector2(16, y) if on_left else Vector2(1064, y)
+	var align := HORIZONTAL_ALIGNMENT_LEFT if on_left else HORIZONTAL_ALIGNMENT_RIGHT
 	var color: Color = P_COLORS[mini(player_id, P_COLORS.size() - 1)]
 
 	var hp := _label(pos, Vector2(200, 24), 16)
