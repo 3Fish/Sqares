@@ -6,7 +6,9 @@ var fire_rate: float = 1.0
 var bullet_speed: float = 800.0
 var bullet_scale: float = 1.0
 var bullet_bounces: int = 0
+var bullet_homing: float = 0.0
 var lifesteal: float = 0.0
+var knockback_force: float = 0.0
 
 var _cooldown: float = 0.0
 var _projectile_scene: PackedScene
@@ -22,7 +24,9 @@ func apply_stats(stats: Dictionary) -> void:
 	bullet_speed   = stats.get("bullet_speed",     bullet_speed)
 	bullet_scale   = stats.get("bullet_scale",     bullet_scale)
 	bullet_bounces = int(stats.get("bullet_bounces", float(bullet_bounces)))
+	bullet_homing  = stats.get("bullet_homing",     bullet_homing)
 	lifesteal      = stats.get("lifesteal",        lifesteal)
+	knockback_force = stats.get("knockback_force",  knockback_force)
 
 
 func _physics_process(delta: float) -> void:
@@ -38,6 +42,9 @@ func try_fire(direction: Vector2) -> void:
 
 func _spawn_projectile(direction: Vector2) -> void:
 	var proj: Projectile = _projectile_scene.instantiate()
-	proj.setup(direction, bullet_speed, damage, bullet_scale, bullet_bounces, lifesteal, get_parent())
+	proj.setup(
+		direction, bullet_speed, damage, bullet_scale, bullet_bounces, lifesteal,
+		get_parent(), bullet_homing, knockback_force,
+	)
 	proj.global_position = global_position + direction.normalized() * 48.0
 	get_tree().current_scene.add_child(proj)
