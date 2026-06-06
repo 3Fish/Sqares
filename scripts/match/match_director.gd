@@ -6,6 +6,14 @@ class_name MatchDirector
 
 const PLAYER_SCENE: PackedScene = preload("res://scenes/player/player.tscn")
 
+## Supported range for local couch play. Input maps exist for p1..p4 and the
+## HUD lays out up to four readouts, so matches are clamped to this range.
+const MIN_PLAYERS := 2
+const MAX_PLAYERS := 4
+## Horizontal gap used to fan players out when an arena ships fewer spawn
+## points than players, so nobody stacks on top of another at the origin.
+const FALLBACK_SPACING := 80.0
+
 @export var arena_id: String = "crossroads"
 @export var player_count: int = 2
 @export var wins_needed: int = 5
@@ -22,6 +30,7 @@ var _round_ending: bool = false
 
 
 func _ready() -> void:
+	player_count = clamp_player_count(player_count)
 	GameManager.setup_match(arena_id, player_count, wins_needed)
 	_start_round.call_deferred()
 
@@ -63,14 +72,14 @@ func _spawn_arena() -> void:
 
 func _spawn_players() -> void:
 	var spawn_points: Array[Vector2] = _arena.get_spawn_points() if _arena else []
+	var positions := resolve_spawn_positions(player_count, spawn_points)
 	for i in player_count:
 		var p: Player = PLAYER_SCENE.instantiate()
 		p.player_id = i
 		_players_container.add_child(p)
 		_players.append(p)
 		_alive_ids.append(i)
-		if i < spawn_points.size():
-			p.global_position = spawn_points[i]
+		p.global_position = positions[i]
 		p.player_died.connect(_on_player_died.bind(i))
 		_hud.register_player(i, p)
 
@@ -118,3 +127,33 @@ func _unhandled_input(event: InputEvent) -> void:
 		_match_over = false
 		GameManager.setup_match(arena_id, player_count, wins_needed)
 		_start_round()
+
+
+# ---------------------------------------------------------------------------
+# Pure helpers (no scene-tree dependencies — covered by tests/)
+# ---------------------------------------------------------------------------
+
+## Clamps a requested player count into the supported local-play range.
+static func clamp_player_count(count: int) -> int:
+	return clampi(count, MIN_PLAYERS, MAX_PLAYERS)
+
+
+## Returns exactly `count` spawn positions. Available spawn points are used
+## first; when an arena ships fewer spawns than players, the remainder reuse
+## existing spawns nudged horizontally so players never overlap. With no spawn
+## points at all, players are fanned out symmetrically around the origin.
+static func resolve_spawn_positions(count: int, spawn_points: Array[Vector2]) -> Array[Vector2]:
+	var positions: Array[Vector2] = []
+	if count <= 0:
+		return positions
+	if spawn_points.is_empty():
+		for i in count:
+			positions.append(Vector2((float(i) - float(count - 1) * 0.5) * FALLBACK_SPACING, 0.0))
+		return positions
+	for i in count:
+		var base: Vector2 = spawn_points[i % spawn_points.size()]
+		var reuse: int = i / spawn_points.size()  # 0 on first pass, grows when reused
+		# Alternate nudge direction so reused spawns spread out rather than drift.
+		var dir := 1.0 if i % 2 == 0 else -1.0
+		positions.append(base + Vector2(FALLBACK_SPACING * reuse * dir, 0.0))
+	return positions
