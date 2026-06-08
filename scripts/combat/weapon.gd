@@ -48,5 +48,6 @@ func _spawn_projectile(direction: Vector2) -> void:
 	)
 	proj.global_position = global_position + direction.normalized() * 48.0
 	get_tree().current_scene.add_child(proj)
+	SfxDirector.play(SfxDirector.SHOOT)
 	# Let card effects react to / mutate the freshly spawned shot.
 	EffectEngine.notify_shoot(get_parent(), self, proj, direction)

@@ -71,11 +71,13 @@ func _physics_process(delta: float) -> void:
 			collider.apply_knockback(velocity.normalized() * knockback_force)
 		if lifesteal > 0.0 and is_instance_valid(shooter) and shooter.has_method("heal"):
 			shooter.heal(lifesteal)
+		SfxDirector.play(SfxDirector.HIT)
 		EffectEngine.notify_hit(shooter if is_instance_valid(shooter) else null, collider, self, damage)
 		queue_free()
 	elif bounces_remaining > 0:
 		velocity = velocity.bounce(collision.get_normal())
 		bounces_remaining -= 1
+		SfxDirector.play(SfxDirector.BOUNCE)
 	else:
 		queue_free()
 
