@@ -9,6 +9,7 @@ var bullet_bounces: int = 0
 var bullet_homing: float = 0.0
 var lifesteal: float = 0.0
 var knockback_force: float = 0.0
+var explosion_radius: float = 0.0
 
 var _cooldown: float = 0.0
 var _projectile_scene: PackedScene
@@ -27,6 +28,7 @@ func apply_stats(stats: Dictionary) -> void:
 	bullet_homing  = stats.get("bullet_homing",     bullet_homing)
 	lifesteal      = stats.get("lifesteal",        lifesteal)
 	knockback_force = stats.get("knockback_force",  knockback_force)
+	explosion_radius = stats.get("explosion_radius", explosion_radius)
 
 
 func _physics_process(delta: float) -> void:
@@ -44,7 +46,7 @@ func _spawn_projectile(direction: Vector2) -> void:
 	var proj: Projectile = _projectile_scene.instantiate()
 	proj.setup(
 		direction, bullet_speed, damage, bullet_scale, bullet_bounces, lifesteal,
-		get_parent(), bullet_homing, knockback_force,
+		get_parent(), bullet_homing, knockback_force, explosion_radius,
 	)
 	proj.global_position = global_position + direction.normalized() * 48.0
 	get_tree().current_scene.add_child(proj)
