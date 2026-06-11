@@ -42,3 +42,13 @@ func on_shoot(_ctx: EffectContext) -> void:
 ## `ctx.event.damage` the damage that was dealt.
 func on_hit(_ctx: EffectContext) -> void:
 	pass
+
+
+## Fired when the owning player *takes* damage that reduces HP — the victim-side
+## counterpart to `on_hit`. Use it for defensive / retaliation effects ("reflect
+## damage when hit", "gain a shield on taking damage"). `ctx.player` is the
+## victim, `ctx.target` is the attacker (may be `null` for sourceless damage such
+## as a kill zone), and `ctx.event.damage` is the HP actually lost. Does not fire
+## when a hit is fully absorbed by a shield charge (no HP is lost).
+func on_take_damage(_ctx: EffectContext) -> void:
+	pass
