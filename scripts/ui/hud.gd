@@ -79,8 +79,10 @@ func hide_center() -> void:
 
 
 func update_wins() -> void:
+	# Pips reflect the player's *team* win count, so teammates show the same
+	# tally. In Free-for-all the team is the player, so this is per-player.
 	for id: int in _win_labels:
-		var count: int = GameManager.win_counts.get(id, 0)
+		var count: int = GameManager.wins_for_player(id)
 		_win_labels[id].text = "■".repeat(count) + "□".repeat(
 			GameManager.rounds_to_win - count
 		)

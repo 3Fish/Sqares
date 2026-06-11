@@ -8,6 +8,15 @@ func _on_load() -> void:
 	_register_base_stats()
 	_register_arenas()
 	_register_cards()
+	_register_modes()
+
+
+func _register_modes() -> void:
+	# Built-in game modes, registered through the same GameModeRegistry API a
+	# third-party mod would use. "ffa" is the base GameMode (Free-for-all);
+	# "teams" splits players into balanced teams.
+	GameModeRegistry.register("ffa", preload("res://scripts/modes/game_mode.gd"))
+	GameModeRegistry.register("teams", preload("res://scripts/modes/teams_mode.gd"))
 
 
 func _register_cards() -> void:
