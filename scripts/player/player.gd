@@ -171,6 +171,7 @@ func _on_died(killer: Node) -> void:
 	set_physics_process(false)
 	# Dead players stop being homing/knockback targets until they respawn.
 	remove_from_group(Projectile.TARGET_GROUP)
+	SfxDirector.play(SfxDirector.DEATH)
 	player_died.emit(self, killer)
 
 
