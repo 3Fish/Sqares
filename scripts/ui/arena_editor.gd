@@ -16,6 +16,7 @@ var _id_field: LineEdit
 var _name_field: LineEdit
 var _load_picker: OptionButton
 var _status: Label
+var _tool_group: ButtonGroup
 
 
 func _ready() -> void:
@@ -37,6 +38,9 @@ func _ready() -> void:
 	_canvas.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_canvas.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_canvas.clip_contents = true
+	_canvas.arena_modified.connect(_on_arena_modified)
+
+	root.add_child(_build_tool_bar())
 	root.add_child(_canvas)
 
 	_new_arena()
@@ -89,6 +93,58 @@ func _make_button(text: String, handler: Callable) -> Button:
 	btn.text = text
 	btn.pressed.connect(handler)
 	return btn
+
+
+## A second toolbar row: the placement-tool palette + delete.
+func _build_tool_bar() -> Control:
+	var bar := HBoxContainer.new()
+	bar.add_theme_constant_override("separation", 4)
+
+	var label := Label.new()
+	label.text = "Tools:"
+	bar.add_child(label)
+
+	_tool_group = ButtonGroup.new()
+	bar.add_child(_make_tool_button("Select", ArenaEditTools.Tool.SELECT, true))
+	bar.add_child(_make_tool_button("Platform", ArenaEditTools.Tool.PLATFORM, false))
+	bar.add_child(_make_tool_button("Spawn", ArenaEditTools.Tool.SPAWN, false))
+	bar.add_child(_make_tool_button("Kill Zone", ArenaEditTools.Tool.KILL_ZONE, false))
+
+	var sep := VSeparator.new()
+	bar.add_child(sep)
+	bar.add_child(_make_button("Delete", _on_delete))
+
+	var hint := Label.new()
+	hint.text = "  (left: place/edit · middle/right drag: pan · wheel: zoom · Del: delete)"
+	hint.modulate = Color(1, 1, 1, 0.6)
+	bar.add_child(hint)
+	return bar
+
+
+func _make_tool_button(text: String, tool_id: int, pressed: bool) -> Button:
+	var btn := Button.new()
+	btn.text = text
+	btn.toggle_mode = true
+	btn.button_group = _tool_group
+	btn.button_pressed = pressed
+	btn.pressed.connect(func() -> void: _on_tool_selected(tool_id))
+	return btn
+
+
+func _on_tool_selected(tool_id: int) -> void:
+	_canvas.set_tool(tool_id)
+
+
+func _on_delete() -> void:
+	if _canvas.delete_selected():
+		_set_status("Deleted selection")
+
+
+func _on_arena_modified() -> void:
+	var a := _canvas.arena
+	_set_status("%d platform(s), %d spawn(s), %d kill zone(s)" % [
+		a.platforms.size(), a.spawn_points.size(), a.kill_zones.size()
+	])
 
 
 func _new_arena() -> void:
