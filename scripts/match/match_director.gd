@@ -19,6 +19,11 @@ const FALLBACK_SPACING := 80.0
 @export var wins_needed: int = 5
 ## Cards offered to each losing player between rounds (#17).
 @export var cards_per_draw: int = CardDraw.DEFAULT_DRAW_COUNT
+## Game mode id, resolved against GameModeRegistry. "ffa" (default) is
+## Free-for-all; "teams" splits players into balanced teams. A future
+## match-setup screen will let players pick this; for now it is configurable
+## here, mirroring how `player_count` is exposed.
+@export var game_mode: String = "ffa"
 
 @onready var _arena_container: Node2D  = $"../ArenaContainer"
 @onready var _players_container: Node2D = $"../PlayersContainer"
@@ -29,6 +34,7 @@ var _players: Array[Player] = []
 var _alive_ids: Array[int] = []
 var _match_over: bool = false
 var _round_ending: bool = false
+var _mode: GameMode = null
 
 ## Card effects accumulated per player slot over the match (#17). Players are
 ## re-instantiated each round, so a slot's picked effects are re-applied to its
@@ -46,8 +52,15 @@ var _rng := RandomNumberGenerator.new()
 func _ready() -> void:
 	_rng.randomize()
 	player_count = clamp_player_count(player_count)
-	GameManager.setup_match(arena_id, player_count, wins_needed)
+	_mode = resolve_mode(game_mode)
+	_begin_match()
 	_start_round.call_deferred()
+
+
+## Builds the team assignment from the active mode and hands it to GameManager.
+func _begin_match() -> void:
+	var teams := _mode.assign_teams(player_count)
+	GameManager.setup_match(arena_id, player_count, wins_needed, teams, _mode.id)
 
 
 func _start_round() -> void:
@@ -105,7 +118,9 @@ func _spawn_players() -> void:
 
 func _on_player_died(_player: Player, _killer: Node, player_id: int) -> void:
 	_alive_ids.erase(player_id)
-	if _alive_ids.size() <= 1 and not _round_ending:
+	# The round ends once a single team (or none) has survivors. In FFA each
+	# player is their own team, so this reduces to "one player left".
+	if GameManager.teams_remaining(_alive_ids, GameManager.team_of).size() <= 1 and not _round_ending:
 		_end_round()
 
 
@@ -117,23 +132,25 @@ func _end_round() -> void:
 		if _players[i].health.is_dead():
 			loser_ids.append(i)
 		else:
-			winner_id = i
+			winner_id = i  # any survivor; their team takes the round
 
 	GameManager.end_round(loser_ids)
 
 	var match_over := false
+	var winning_team := -1
 	if winner_id >= 0:
+		winning_team = GameManager.team_for(winner_id)
 		match_over = GameManager.record_win(winner_id)
 		_hud.update_wins()
 
 	if match_over:
 		_match_over = true
 		_hud.show_center(
-			"Player %d wins the match!\n[any key to replay]" % (winner_id + 1)
+			"%s wins the match!\n[any key to replay]" % _mode.team_label(winning_team)
 		)
 		return
 
-	var msg := "Player %d wins the round!" % (winner_id + 1) if winner_id >= 0 else "Draw!"
+	var msg := "%s wins the round!" % _mode.team_label(winning_team) if winner_id >= 0 else "Draw!"
 	_hud.show_center(msg)
 	await get_tree().create_timer(2.5).timeout
 	if _match_over:
@@ -188,7 +205,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		# the previous match's (now-freed) player nodes.
 		_picked_effects.clear()
 		EffectEngine.clear()
-		GameManager.setup_match(arena_id, player_count, wins_needed)
+		_begin_match()
 		_start_round()
 
 
@@ -199,6 +216,18 @@ func _unhandled_input(event: InputEvent) -> void:
 ## Clamps a requested player count into the supported local-play range.
 static func clamp_player_count(count: int) -> int:
 	return clampi(count, MIN_PLAYERS, MAX_PLAYERS)
+
+
+## Resolves a mode id to a GameMode instance via GameModeRegistry, falling back
+## to Free-for-all when the id is unknown or the registry is empty (e.g. before
+## mods have loaded, or in the headless test harness).
+static func resolve_mode(mode_id: String) -> GameMode:
+	var script: GDScript = GameModeRegistry.get_mode(mode_id)
+	if script:
+		var mode: Object = script.new()
+		if mode is GameMode:
+			return mode
+	return GameMode.new()
 
 
 ## Returns exactly `count` spawn positions. Available spawn points are used

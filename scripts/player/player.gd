@@ -38,6 +38,7 @@ func _ready() -> void:
 	stats = PlayerStats.new(StatRegistry.get_defaults())
 	_sync_stats(true)
 	health.died.connect(_on_died)
+	health.damaged.connect(_on_damaged)
 	add_to_group(Projectile.TARGET_GROUP)
 
 
@@ -155,6 +156,13 @@ func apply_knockback(impulse: Vector2) -> void:
 	if _dead:
 		return
 	velocity += impulse
+
+
+## Forwards damage this player actually took to the effect engine so the victim's
+## defensive / retaliation effects (`on_take_damage`) fire. Fed by `Health.damaged`,
+## which only emits when HP is lost (shield-absorbed hits trigger nothing).
+func _on_damaged(amount: float, attacker: Node) -> void:
+	EffectEngine.notify_take_damage(self, attacker, amount)
 
 
 func _on_died(killer: Node) -> void:

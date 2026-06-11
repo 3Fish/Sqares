@@ -29,6 +29,7 @@ class _Recorder extends CardEffect:
 	func on_round_start(ctx: EffectContext) -> void: _snap("on_round_start", ctx)
 	func on_shoot(ctx: EffectContext) -> void: _snap("on_shoot", ctx)
 	func on_hit(ctx: EffectContext) -> void: _snap("on_hit", ctx)
+	func on_take_damage(ctx: EffectContext) -> void: _snap("on_take_damage", ctx)
 
 
 ## A duck-typed effect that is NOT a CardEffect and implements only one hook —
@@ -98,6 +99,54 @@ func _test_notify_hit_dispatches_with_context() -> void:
 	assert_eq(h["target"], target, "context carries the target")
 	assert_eq(h["projectile"], proj, "context carries the projectile")
 	assert_almost_eq(h["event"]["damage"], 42.0, "event carries the damage")
+
+
+func _test_notify_take_damage_dispatches_to_victim() -> void:
+	# The victim-side counterpart to on_hit (#50): a player's own effects fire
+	# when *they* take damage, with the attacker carried as ctx.target.
+	var victim := _StubPlayer.new()
+	var attacker := _StubPlayer.new()
+	var effect := _Recorder.new()
+	EffectEngine.apply_effect(victim, effect)
+	effect.hits.clear()
+
+	EffectEngine.notify_take_damage(victim, attacker, 17.0)
+	assert_eq(effect.hits.size(), 1, "on_take_damage fired once")
+	var h: Dictionary = effect.hits[0]
+	assert_eq(h["hook"], "on_take_damage", "take-damage hook fired")
+	assert_eq(h["player"], victim, "context owner is the victim")
+	assert_eq(h["target"], attacker, "context target is the attacker")
+	assert_almost_eq(h["event"]["damage"], 17.0, "event carries the damage taken")
+
+
+func _test_notify_take_damage_only_hits_victim_not_attacker() -> void:
+	# An attacker's own effects must NOT fire from the victim's take-damage event;
+	# the dispatch is per-victim, mirroring on_hit's per-shooter dispatch.
+	var victim := _StubPlayer.new()
+	var attacker := _StubPlayer.new()
+	var victim_effect := _Recorder.new()
+	var attacker_effect := _Recorder.new()
+	EffectEngine.apply_effect(victim, victim_effect)
+	EffectEngine.apply_effect(attacker, attacker_effect)
+	victim_effect.hits.clear()
+	attacker_effect.hits.clear()
+
+	EffectEngine.notify_take_damage(victim, attacker, 5.0)
+	assert_eq(victim_effect.hits.size(), 1, "victim's effect receives the take-damage event")
+	assert_eq(attacker_effect.hits.size(), 0, "attacker's effect is not touched")
+
+
+func _test_notify_take_damage_tolerates_null_attacker() -> void:
+	# Sourceless damage (e.g. a kill zone) carries no attacker; the hook must still
+	# fire with ctx.target == null rather than crashing.
+	var victim := _StubPlayer.new()
+	var effect := _Recorder.new()
+	EffectEngine.apply_effect(victim, effect)
+	effect.hits.clear()
+
+	EffectEngine.notify_take_damage(victim, null, 99.0)
+	assert_eq(effect.hits.size(), 1, "on_take_damage fires even without an attacker")
+	assert_null(effect.hits[0]["target"], "null attacker yields a null target")
 
 
 func _test_dispatch_is_per_player() -> void:

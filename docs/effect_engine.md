@@ -27,6 +27,7 @@ by default.
 | `on_round_start`  | every round begins, while the effect is active         | `player`, `event.round`                        |
 | `on_shoot`        | the owning player fires, just after the bullet spawns  | `player`, `weapon`, `projectile`, `event.direction` |
 | `on_hit`          | one of the player's projectiles strikes a target       | `player`, `projectile`, `target`, `event.damage`    |
+| `on_take_damage`  | the owning player loses HP (the victim side of a hit)  | `player` (victim), `target` (attacker), `event.damage` |
 
 Every hook receives one `EffectContext` argument. Unused fields are `null`;
 `event` is a small `Dictionary` of hook-specific scalars (read it with
@@ -73,6 +74,9 @@ triggers for you:
 
 - `Weapon` calls `EffectEngine.notify_shoot(...)` after spawning each bullet.
 - `Projectile` calls `EffectEngine.notify_hit(...)` on impact.
+- `Player` forwards `Health.damaged` to `EffectEngine.notify_take_damage(...)` so a
+  victim's `on_take_damage` fires (only when HP is actually lost — a shield-absorbed
+  hit emits no `damaged`).
 - `GameManager.round_started` is fanned out to every effect's `on_round_start`.
 
 Effects **persist across rounds** by design (the rogue-like accumulates picks).

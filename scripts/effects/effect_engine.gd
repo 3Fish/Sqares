@@ -88,6 +88,16 @@ func notify_hit(shooter: Object, target: Object, projectile: Object, damage: flo
 	_dispatch_player(shooter, "on_hit", ctx)
 
 
+## Notifies the engine that `victim` lost `damage` HP, dealt by `attacker` (which
+## may be `null` for sourceless damage such as a kill zone). Fans out to the
+## *victim*'s `on_take_damage` effects — the defensive/retaliation counterpart to
+## `notify_hit`. Sourced from `Health.damaged`, so it fires only when HP is
+## actually lost (a shield-absorbed hit emits no `damaged` and triggers nothing).
+func notify_take_damage(victim: Object, attacker: Object, damage: float) -> void:
+	var ctx := EffectContext.new(victim, _weapon_of(victim), null, attacker, {"damage": damage})
+	_dispatch_player(victim, "on_take_damage", ctx)
+
+
 ## Fans an `on_round_start` hook out to every active effect of every player.
 ## Wired to `GameManager.round_started` in `_ready`, but exposed directly so the
 ## fan-out can be unit-tested without standing up the autoload's signal path.
