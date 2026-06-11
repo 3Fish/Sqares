@@ -29,8 +29,10 @@ GameModeRegistry="*res://scripts/mods/game_mode_registry.gd"
 UIManager="*res://scripts/mods/ui_manager.gd"
 PlayerActionRegistry="*res://scripts/mods/player_action_registry.gd"
 AudioManager="*res://scripts/audio/audio_manager.gd"
+MusicDirector="*res://scripts/audio/music_director.gd"
 SfxDirector="*res://scripts/audio/sfx_director.gd"
 NetworkManager="*res://scripts/multiplayer/network_manager.gd"
+RNGService="*res://scripts/multiplayer/rng_service.gd"
 
 [display]
 
