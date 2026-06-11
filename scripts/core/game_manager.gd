@@ -51,6 +51,14 @@ func end_round(loser_ids: Array) -> void:
 	round_ended.emit(loser_ids)
 
 
+## Enters the between-rounds card-selection phase (#17). Kept as its own method
+## (rather than an inline `change_state`) so the round-flow caller and tests
+## have a named seam; it carries no card logic itself — drawing and applying
+## cards is driven by `MatchDirector` / the selection UI.
+func begin_card_selection() -> void:
+	change_state(State.CARD_SELECTION)
+
+
 func change_state(new_state: State) -> void:
 	state = new_state
 	state_changed.emit(new_state)
