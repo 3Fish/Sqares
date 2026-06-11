@@ -3,6 +3,7 @@ extends Control
 func _ready() -> void:
 	$VBox/PlayButton.pressed.connect(_on_play_pressed)
 	$VBox/SettingsButton.pressed.connect(_on_settings_pressed)
+	$VBox/ArenaEditorButton.pressed.connect(_on_arena_editor_pressed)
 	$VBox/QuitButton.pressed.connect(_on_quit_pressed)
 
 	# Populate any menu items injected by mods
@@ -19,6 +20,10 @@ func _on_play_pressed() -> void:
 
 func _on_settings_pressed() -> void:
 	get_tree().change_scene_to_file("res://scenes/ui/options_menu.tscn")
+
+
+func _on_arena_editor_pressed() -> void:
+	get_tree().change_scene_to_file("res://scenes/ui/arena_editor.tscn")
 
 
 func _on_quit_pressed() -> void:
