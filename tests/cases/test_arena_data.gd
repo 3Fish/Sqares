@@ -32,6 +32,31 @@ func _test_default_platform_color() -> void:
 	assert_eq(arena.platforms[0]["color"], Color(0.3, 0.3, 0.45, 1.0), "default color applied")
 
 
+func _test_remove_helpers_drop_the_indexed_element() -> void:
+	var arena := _make_sample()
+	arena.remove_platform(0)
+	assert_eq(arena.platforms.size(), 1, "one platform left")
+	assert_eq(arena.platforms[0]["position"], Vector2(100, -50), "the other platform survived")
+
+	arena.remove_spawn_point(0)
+	assert_eq(arena.spawn_points.size(), 1, "one spawn left")
+	assert_eq(arena.spawn_points[0], Vector2(400, 242), "the other spawn survived")
+
+	arena.remove_kill_zone(0)
+	assert_eq(arena.kill_zones.size(), 0, "kill zone removed")
+
+
+func _test_remove_out_of_range_is_a_noop() -> void:
+	var arena := _make_sample()
+	arena.remove_platform(-1)
+	arena.remove_platform(99)
+	arena.remove_spawn_point(5)
+	arena.remove_kill_zone(-3)
+	assert_eq(arena.platforms.size(), 2, "platforms untouched")
+	assert_eq(arena.spawn_points.size(), 2, "spawns untouched")
+	assert_eq(arena.kill_zones.size(), 1, "kill zones untouched")
+
+
 func _test_to_dict_is_json_safe() -> void:
 	var arena := _make_sample()
 	var dict := arena.to_dict()

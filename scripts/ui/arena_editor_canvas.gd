@@ -2,10 +2,18 @@ extends Control
 class_name ArenaEditorCanvas
 
 ## The arena editor's drawing surface: a pannable, zoomable grid that renders the
-## current `ArenaData` (platforms, spawn points, kill zones). This is the "shell"
-## canvas (#34) — it views the arena and owns the camera; the placement/editing
-## tools that mutate the geometry are #35. All coordinate maths go through the
-## pure `EditorCamera` helpers so the view and the (tested) maths cannot drift.
+## current `ArenaData` (platforms, spawn points, kill zones) and hosts the
+## placement/editing tools (#35). The shell (#34) added view + camera; this layer
+## adds left-mouse interaction: add / move / delete / resize platforms and kill
+## zones, and place spawn points.
+##
+## All coordinate maths go through the pure `EditorCamera` helpers and all
+## placement decisions through the pure `ArenaEditTools` helpers, so the view and
+## the (tested) maths cannot drift.
+
+## Emitted whenever the arena geometry changes (place / move / resize / delete),
+## so the editor can update its status line / dirty state.
+signal arena_modified
 
 ## World-space spacing of the background grid, in pixels-at-zoom-1.
 const GRID_SPACING: float = 64.0
@@ -13,6 +21,12 @@ const GRID_SPACING: float = 64.0
 const MAX_GRID_LINES: int = 400
 ## How much one mouse-wheel notch multiplies / divides the zoom.
 const ZOOM_STEP: float = 1.15
+## Beyond this many screen pixels a left press-drag counts as a drag (vs a click).
+const DRAG_THRESHOLD_PX: float = 4.0
+## Half-size, in screen pixels, of the square resize handles drawn on a selection.
+const HANDLE_PX: float = 5.0
+## Screen-pixel pick radius for grabbing a resize handle or a spawn point.
+const PICK_PX: float = 9.0
 
 const COLOR_GRID := Color(1, 1, 1, 0.06)
 const COLOR_AXIS := Color(1, 1, 1, 0.18)
@@ -20,6 +34,8 @@ const COLOR_PLATFORM_OUTLINE := Color(1, 1, 1, 0.35)
 const COLOR_SPAWN := Color(0.4, 0.9, 0.5, 0.95)
 const COLOR_KILLZONE := Color(0.9, 0.25, 0.25, 0.28)
 const COLOR_KILLZONE_OUTLINE := Color(0.95, 0.35, 0.35, 0.8)
+const COLOR_SELECT := Color(1.0, 0.85, 0.2, 0.95)
+const COLOR_PREVIEW := Color(1.0, 1.0, 1.0, 0.5)
 
 ## Camera state. `pan` is the world point shown at the canvas centre.
 var pan: Vector2 = Vector2.ZERO
@@ -28,12 +44,55 @@ var zoom: float = 1.0
 ## The arena currently being viewed/edited. Never null after `_ready`.
 var arena: ArenaData = ArenaData.new()
 
+## The active placement tool (`ArenaEditTools.Tool`).
+var tool: int = ArenaEditTools.Tool.SELECT
+
+## Current selection (`ArenaEditTools.Kind` + element index).
+var sel_kind: int = ArenaEditTools.Kind.NONE
+var sel_index: int = -1
+
 var _panning: bool = false
+
+# Left-drag interaction state.
+var _drawing: bool = false          ## Rubber-banding a new platform / kill zone.
+var _draw_start: Vector2 = Vector2.ZERO
+var _draw_current: Vector2 = Vector2.ZERO
+var _moving: bool = false           ## Dragging the selected element.
+var _move_offset: Vector2 = Vector2.ZERO
+var _resizing: bool = false         ## Dragging a resize handle of the selection.
+var _resize_handle: int = ArenaEditTools.Handle.NONE
+var _press_screen: Vector2 = Vector2.ZERO
+
+
+func _ready() -> void:
+	# FOCUS_CLICK lets the canvas receive the Delete key once clicked.
+	focus_mode = Control.FOCUS_CLICK
 
 
 func set_arena(new_arena: ArenaData) -> void:
 	arena = new_arena if new_arena != null else ArenaData.new()
+	_clear_selection()
 	queue_redraw()
+
+
+## Switch the active placement tool, cancelling any in-progress drag.
+func set_tool(new_tool: int) -> void:
+	tool = new_tool
+	_cancel_drag()
+	queue_redraw()
+
+
+## Delete the current selection, if any. Returns true when something was removed.
+func delete_selected() -> bool:
+	match sel_kind:
+		ArenaEditTools.Kind.PLATFORM: arena.remove_platform(sel_index)
+		ArenaEditTools.Kind.SPAWN: arena.remove_spawn_point(sel_index)
+		ArenaEditTools.Kind.KILL_ZONE: arena.remove_kill_zone(sel_index)
+		_: return false
+	_clear_selection()
+	arena_modified.emit()
+	queue_redraw()
+	return true
 
 
 ## Centre the view on the arena's content (or the origin when it's empty).
@@ -47,20 +106,200 @@ func frame_content() -> void:
 	queue_redraw()
 
 
+# --- Input ------------------------------------------------------------------
+
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
-		var mb := event as InputEventMouseButton
-		if mb.button_index == MOUSE_BUTTON_WHEEL_UP and mb.pressed:
-			_zoom_at(mb.position, ZOOM_STEP)
-		elif mb.button_index == MOUSE_BUTTON_WHEEL_DOWN and mb.pressed:
-			_zoom_at(mb.position, 1.0 / ZOOM_STEP)
-		elif mb.button_index == MOUSE_BUTTON_MIDDLE or mb.button_index == MOUSE_BUTTON_RIGHT:
-			# Middle / right drag pans; left stays free for placement tools (#35).
-			_panning = mb.pressed
-	elif event is InputEventMouseMotion and _panning:
-		var mm := event as InputEventMouseMotion
+		_handle_mouse_button(event as InputEventMouseButton)
+	elif event is InputEventMouseMotion:
+		_handle_mouse_motion(event as InputEventMouseMotion)
+	elif event is InputEventKey:
+		var key := event as InputEventKey
+		if key.pressed and (key.keycode == KEY_DELETE or key.keycode == KEY_BACKSPACE):
+			delete_selected()
+
+
+func _handle_mouse_button(mb: InputEventMouseButton) -> void:
+	if mb.button_index == MOUSE_BUTTON_WHEEL_UP and mb.pressed:
+		_zoom_at(mb.position, ZOOM_STEP)
+	elif mb.button_index == MOUSE_BUTTON_WHEEL_DOWN and mb.pressed:
+		_zoom_at(mb.position, 1.0 / ZOOM_STEP)
+	elif mb.button_index == MOUSE_BUTTON_MIDDLE or mb.button_index == MOUSE_BUTTON_RIGHT:
+		# Middle / right drag pans; left is the placement / editing button.
+		_panning = mb.pressed
+	elif mb.button_index == MOUSE_BUTTON_LEFT:
+		if mb.pressed:
+			grab_focus()
+			_on_left_press(_to_world(mb.position), mb.position)
+		else:
+			_on_left_release(_to_world(mb.position), mb.position)
+
+
+func _handle_mouse_motion(mm: InputEventMouseMotion) -> void:
+	if _panning:
 		pan = EditorCamera.pan_by_screen_delta(pan, mm.relative, zoom)
 		queue_redraw()
+		return
+	var world := _to_world(mm.position)
+	if _drawing:
+		_draw_current = ArenaEditTools.snap(world)
+		queue_redraw()
+	elif _resizing:
+		_apply_resize(world)
+	elif _moving:
+		_apply_move(world)
+
+
+func _on_left_press(world: Vector2, screen: Vector2) -> void:
+	_press_screen = screen
+	match tool:
+		ArenaEditTools.Tool.SPAWN:
+			arena.add_spawn_point(ArenaEditTools.snap(world))
+			_select(ArenaEditTools.Kind.SPAWN, arena.spawn_points.size() - 1)
+			arena_modified.emit()
+		ArenaEditTools.Tool.PLATFORM, ArenaEditTools.Tool.KILL_ZONE:
+			_drawing = true
+			_draw_start = ArenaEditTools.snap(world)
+			_draw_current = _draw_start
+		_:
+			_begin_select_or_grab(world)
+	queue_redraw()
+
+
+func _on_left_release(world: Vector2, screen: Vector2) -> void:
+	if _drawing:
+		_commit_drawn_rect(world, screen)
+	_drawing = false
+	_moving = false
+	_resizing = false
+	_resize_handle = ArenaEditTools.Handle.NONE
+	queue_redraw()
+
+
+## On a SELECT-tool press: grab a resize handle of the current selection, else
+## hit-test for a new selection (and start moving it), else clear the selection.
+func _begin_select_or_grab(world: Vector2) -> void:
+	var geom := _selected_rect()
+	if not geom.is_empty():
+		var handle := ArenaEditTools.handle_at(geom.position, geom.size, world, PICK_PX / zoom)
+		if handle != ArenaEditTools.Handle.NONE:
+			_resizing = true
+			_resize_handle = handle
+			return
+
+	var p := ArenaEditTools.platform_index_at(arena, world)
+	if p != -1:
+		_select(ArenaEditTools.Kind.PLATFORM, p)
+		_start_move(world)
+		return
+	var k := ArenaEditTools.kill_zone_index_at(arena, world)
+	if k != -1:
+		_select(ArenaEditTools.Kind.KILL_ZONE, k)
+		_start_move(world)
+		return
+	var s := ArenaEditTools.spawn_index_at(arena, world, PICK_PX / zoom)
+	if s != -1:
+		_select(ArenaEditTools.Kind.SPAWN, s)
+		_start_move(world)
+		return
+	_clear_selection()
+
+
+func _start_move(world: Vector2) -> void:
+	_moving = true
+	_move_offset = _selected_center() - world
+
+
+func _apply_move(world: Vector2) -> void:
+	var center := ArenaEditTools.snap(world + _move_offset)
+	match sel_kind:
+		ArenaEditTools.Kind.PLATFORM: arena.platforms[sel_index]["position"] = center
+		ArenaEditTools.Kind.KILL_ZONE: arena.kill_zones[sel_index]["position"] = center
+		ArenaEditTools.Kind.SPAWN: arena.spawn_points[sel_index] = center
+		_: return
+	arena_modified.emit()
+	queue_redraw()
+
+
+func _apply_resize(world: Vector2) -> void:
+	var geom := _selected_rect()
+	if geom.is_empty():
+		return
+	var snapped := ArenaEditTools.snap(world)
+	var result := ArenaEditTools.resize_rect(geom.position, geom.size, _resize_handle, snapped)
+	match sel_kind:
+		ArenaEditTools.Kind.PLATFORM:
+			arena.platforms[sel_index]["position"] = result["position"]
+			arena.platforms[sel_index]["size"] = result["size"]
+		ArenaEditTools.Kind.KILL_ZONE:
+			arena.kill_zones[sel_index]["position"] = result["position"]
+			arena.kill_zones[sel_index]["size"] = result["size"]
+		_: return
+	arena_modified.emit()
+	queue_redraw()
+
+
+func _commit_drawn_rect(world: Vector2, screen: Vector2) -> void:
+	var end := ArenaEditTools.snap(world)
+	var rect: Dictionary
+	# A click without a meaningful drag drops a default-sized rectangle.
+	if _press_screen.distance_to(screen) <= DRAG_THRESHOLD_PX:
+		rect = {"position": _draw_start, "size": ArenaEditTools.DEFAULT_RECT_SIZE}
+	else:
+		rect = ArenaEditTools.rect_from_drag(_draw_start, end)
+	if tool == ArenaEditTools.Tool.KILL_ZONE:
+		arena.add_kill_zone(rect["position"], rect["size"])
+		_select(ArenaEditTools.Kind.KILL_ZONE, arena.kill_zones.size() - 1)
+	else:
+		arena.add_platform(rect["position"], rect["size"])
+		_select(ArenaEditTools.Kind.PLATFORM, arena.platforms.size() - 1)
+	arena_modified.emit()
+
+
+# --- Selection helpers ------------------------------------------------------
+
+func _select(kind: int, index: int) -> void:
+	sel_kind = kind
+	sel_index = index
+
+
+func _clear_selection() -> void:
+	sel_kind = ArenaEditTools.Kind.NONE
+	sel_index = -1
+
+
+func _cancel_drag() -> void:
+	_drawing = false
+	_moving = false
+	_resizing = false
+	_resize_handle = ArenaEditTools.Handle.NONE
+
+
+## Centre of the current selection, or ZERO when nothing valid is selected.
+func _selected_center() -> Vector2:
+	match sel_kind:
+		ArenaEditTools.Kind.PLATFORM:
+			return arena.platforms[sel_index].get("position", Vector2.ZERO)
+		ArenaEditTools.Kind.KILL_ZONE:
+			return arena.kill_zones[sel_index].get("position", Vector2.ZERO)
+		ArenaEditTools.Kind.SPAWN:
+			return arena.spawn_points[sel_index]
+	return Vector2.ZERO
+
+
+## Centre+size of the selected rectangle as a `{position, size}` Dictionary, or
+## an empty Dictionary when the selection is not a resizable rectangle.
+func _selected_rect() -> Dictionary:
+	if sel_index < 0:
+		return {}
+	match sel_kind:
+		ArenaEditTools.Kind.PLATFORM:
+			var p: Dictionary = arena.platforms[sel_index]
+			return {"position": p.get("position", Vector2.ZERO), "size": p.get("size", Vector2.ZERO)}
+		ArenaEditTools.Kind.KILL_ZONE:
+			var k: Dictionary = arena.kill_zones[sel_index]
+			return {"position": k.get("position", Vector2.ZERO), "size": k.get("size", Vector2.ZERO)}
+	return {}
 
 
 func _zoom_at(screen_point: Vector2, factor: float) -> void:
@@ -72,12 +311,20 @@ func _zoom_at(screen_point: Vector2, factor: float) -> void:
 	queue_redraw()
 
 
+func _to_world(screen: Vector2) -> Vector2:
+	return EditorCamera.screen_to_world(screen, pan, zoom, size)
+
+
+# --- Drawing ----------------------------------------------------------------
+
 func _draw() -> void:
 	draw_rect(Rect2(Vector2.ZERO, size), arena.background_color)
 	_draw_grid()
 	_draw_kill_zones()
 	_draw_platforms()
 	_draw_spawn_points()
+	_draw_selection()
+	_draw_preview()
 
 
 func _draw_grid() -> void:
@@ -120,6 +367,34 @@ func _draw_spawn_points() -> void:
 		var center := EditorCamera.world_to_screen(arena.spawn_points[i], pan, zoom, size)
 		draw_circle(center, radius, COLOR_SPAWN)
 		draw_circle(center, radius, Color(0, 0, 0, 0.5), false, 1.0)
+
+
+## Outline the current selection and, for rectangles, draw corner resize handles.
+func _draw_selection() -> void:
+	if sel_kind == ArenaEditTools.Kind.SPAWN:
+		var c := EditorCamera.world_to_screen(_selected_center(), pan, zoom, size)
+		var r := maxf(4.0, 10.0 * zoom) + 3.0
+		draw_circle(c, r, COLOR_SELECT, false, 2.0)
+		return
+	var geom := _selected_rect()
+	if geom.is_empty():
+		return
+	var screen_rect := _world_rect_to_screen(geom.position, geom.size)
+	draw_rect(screen_rect, COLOR_SELECT, false, 2.0)
+	for h in [ArenaEditTools.Handle.TOP_LEFT, ArenaEditTools.Handle.TOP_RIGHT,
+			ArenaEditTools.Handle.BOTTOM_LEFT, ArenaEditTools.Handle.BOTTOM_RIGHT]:
+		var corner_world: Vector2 = ArenaEditTools.corner(geom.position, geom.size, h)
+		var corner_screen := EditorCamera.world_to_screen(corner_world, pan, zoom, size)
+		draw_rect(Rect2(corner_screen - Vector2(HANDLE_PX, HANDLE_PX), Vector2(HANDLE_PX, HANDLE_PX) * 2.0), COLOR_SELECT)
+
+
+## While rubber-banding a new platform / kill zone, preview its outline.
+func _draw_preview() -> void:
+	if not _drawing:
+		return
+	var rect: Dictionary = ArenaEditTools.rect_from_drag(_draw_start, _draw_current, Vector2.ZERO)
+	var screen_rect := _world_rect_to_screen(rect["position"], rect["size"])
+	draw_rect(screen_rect, COLOR_PREVIEW, false, 1.0)
 
 
 ## Convert a centred world rectangle (centre + full size) into a screen-space Rect2.

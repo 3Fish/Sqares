@@ -55,6 +55,27 @@ func add_kill_zone(position: Vector2, size: Vector2) -> ArenaData:
 	return self
 
 
+## Remove the platform at `index` (no-op if out of range). Returns self.
+func remove_platform(index: int) -> ArenaData:
+	if index >= 0 and index < platforms.size():
+		platforms.remove_at(index)
+	return self
+
+
+## Remove the spawn point at `index` (no-op if out of range). Returns self.
+func remove_spawn_point(index: int) -> ArenaData:
+	if index >= 0 and index < spawn_points.size():
+		spawn_points.remove_at(index)
+	return self
+
+
+## Remove the kill zone at `index` (no-op if out of range). Returns self.
+func remove_kill_zone(index: int) -> ArenaData:
+	if index >= 0 and index < kill_zones.size():
+		kill_zones.remove_at(index)
+	return self
+
+
 # --- Serialisation ----------------------------------------------------------
 
 ## Convert to a plain, JSON-safe dictionary (Vector2/Color flattened to arrays).
