@@ -8,17 +8,23 @@ func _on_load() -> void:
 	_register_base_stats()
 	_register_arenas()
 	_register_cards()
+	_register_modes()
+
+
+func _register_modes() -> void:
+	# Built-in game modes, registered through the same GameModeRegistry API a
+	# third-party mod would use. "ffa" is the base GameMode (Free-for-all);
+	# "teams" splits players into balanced teams.
+	GameModeRegistry.register("ffa", preload("res://scripts/modes/game_mode.gd"))
+	GameModeRegistry.register("teams", preload("res://scripts/modes/teams_mode.gd"))
 
 
 func _register_cards() -> void:
-	# Sample card that validates the card pipeline end-to-end. The full base-game
-	# card set is authored in #18, once the effect engine (#20) exists to back it.
-	var swift := Card.new()
-	swift.id = "swift_boots"
-	swift.display_name = "Swift Boots"
-	swift.description = "A lightweight sample card. Replaced by the real base set in #18."
-	swift.rarity = Card.Rarity.COMMON
-	register_card(swift)
+	# The base-game card set (#18): movement / offense / defense cards spanning
+	# all registered stats, each backed by a StatCardEffect. Authored as a pure
+	# static factory (BaseCards.build) so the set is unit-testable on its own.
+	for card in BaseCards.build():
+		register_card(card)
 
 
 func _register_arenas() -> void:

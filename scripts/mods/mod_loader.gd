@@ -15,6 +15,9 @@ func _ready() -> void:
 func _load_all_mods() -> void:
 	_load_mods_from("res://mods/")
 	_load_mods_from("user://mods/")
+	# Mods (incl. base_game) have now registered their built-in arenas; pull in
+	# any player-authored custom arenas so they appear in match setup too (#33).
+	LevelRegistry.load_custom_arenas()
 
 
 func _load_mods_from(base_path: String) -> void:
