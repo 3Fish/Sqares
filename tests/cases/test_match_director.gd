@@ -38,6 +38,17 @@ func _test_resolve_spawn_positions() -> void:
 	assert_eq(MatchDirector.resolve_spawn_positions(0, two).size(), 0, "0 players -> 0 positions")
 
 
+func _test_resolve_arena_id() -> void:
+	# A pending playtest arena (#36) overrides the configured fallback.
+	assert_eq(MatchDirector.resolve_arena_id("my_arena", "crossroads"), "my_arena",
+		"pending id wins over the export")
+	# No pending arena: fall back to the export (normal "Play" from the menu).
+	assert_eq(MatchDirector.resolve_arena_id("", "crossroads"), "crossroads",
+		"empty pending -> fallback")
+	assert_eq(MatchDirector.resolve_arena_id("   ", "crossroads"), "crossroads",
+		"whitespace-only pending -> fallback")
+
+
 func _all_unique(points: Array) -> bool:
 	for i in points.size():
 		for j in range(i + 1, points.size()):
