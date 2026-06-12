@@ -14,6 +14,13 @@ const MAX_PLAYERS := 4
 ## points than players, so nobody stacks on top of another at the origin.
 const FALLBACK_SPACING := 80.0
 
+## One-shot arena hand-off for the editor's playtest (#36). When the arena editor
+## launches a playtest it registers the edited arena and sets this; the next
+## MatchDirector to start consumes it (overriding the `arena_id` export) and
+## clears it, so a normal "Play" from the menu is unaffected. A static var keeps
+## the hand-off decoupled from node paths and scene arguments.
+static var pending_arena_id: String = ""
+
 @export var arena_id: String = "crossroads"
 @export var player_count: int = 2
 @export var wins_needed: int = 5
@@ -51,6 +58,9 @@ var _rng := RandomNumberGenerator.new()
 
 func _ready() -> void:
 	_rng.randomize()
+	# Consume a one-shot playtest arena, if the editor handed one over (#36).
+	arena_id = resolve_arena_id(pending_arena_id, arena_id)
+	pending_arena_id = ""
 	player_count = clamp_player_count(player_count)
 	_mode = resolve_mode(game_mode)
 	_begin_match()
@@ -216,6 +226,14 @@ func _unhandled_input(event: InputEvent) -> void:
 ## Clamps a requested player count into the supported local-play range.
 static func clamp_player_count(count: int) -> int:
 	return clampi(count, MIN_PLAYERS, MAX_PLAYERS)
+
+
+## Resolves the arena id a fresh match should use: the one-shot `pending` id
+## handed over by the editor's playtest takes precedence, else the configured
+## `fallback` (the `arena_id` export). Pure so the hand-off precedence is
+## unit-tested without booting a match.
+static func resolve_arena_id(pending: String, fallback: String) -> String:
+	return pending if not pending.strip_edges().is_empty() else fallback
 
 
 ## Resolves a mode id to a GameMode instance via GameModeRegistry, falling back

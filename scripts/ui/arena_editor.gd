@@ -5,11 +5,14 @@ extends Control
 ##
 ## This is the editor *shell*. It can create a blank arena, view/pan/zoom the
 ## canvas, and persist arenas to / from `user://arenas/`. The placement and
-## editing tools that add platforms, spawns and kill zones are #35; the in-match
-## playtest is #36. Controls are built in code to keep the scene file minimal,
-## matching `options_menu.gd`.
+## editing tools that add platforms, spawns and kill zones are #35; validation +
+## the in-match playtest are #36. Controls are built in code to keep the scene
+## file minimal, matching `options_menu.gd`.
 
 const MAIN_MENU_SCENE := "res://scenes/ui/main_menu.tscn"
+const MATCH_SCENE := "res://scenes/match.tscn"
+## Fallback id when playtesting an arena that has no id / name yet.
+const PLAYTEST_FALLBACK_ID := "playtest"
 
 var _canvas: ArenaEditorCanvas
 var _id_field: LineEdit
@@ -114,6 +117,11 @@ func _build_tool_bar() -> Control:
 	bar.add_child(sep)
 	bar.add_child(_make_button("Delete", _on_delete))
 
+	var sep2 := VSeparator.new()
+	bar.add_child(sep2)
+	bar.add_child(_make_button("Validate", _on_validate))
+	bar.add_child(_make_button("Playtest", _on_playtest))
+
 	var hint := Label.new()
 	hint.text = "  (left: place/edit · middle/right drag: pan · wheel: zoom · Del: delete)"
 	hint.modulate = Color(1, 1, 1, 0.6)
@@ -156,8 +164,7 @@ func _new_arena() -> void:
 
 
 func _on_save() -> void:
-	_canvas.arena.id = _id_field.text
-	_canvas.arena.display_name = _name_field.text
+	_sync_meta()
 	var err := ArenaStore.save(_canvas.arena)
 	if err != OK:
 		_set_status("Save failed (error %d)" % err)
@@ -166,7 +173,56 @@ func _on_save() -> void:
 	_id_field.text = _canvas.arena.id
 	_refresh_load_picker()
 	_select_in_picker(_canvas.arena.id)
-	_set_status("Saved '%s'" % _canvas.arena.id)
+	# Validate before reporting (#36) so the user sees what still needs fixing.
+	var issues := ArenaValidator.validate(_canvas.arena)
+	if issues.is_empty():
+		_set_status("Saved '%s' — valid" % _canvas.arena.id)
+	else:
+		_set_status("Saved '%s' — %d error(s), %d warning(s)" % [
+			_canvas.arena.id,
+			ArenaValidator.count(issues, ArenaValidator.Severity.ERROR),
+			ArenaValidator.count(issues, ArenaValidator.Severity.WARNING),
+		])
+
+
+## Report validation results without saving or launching.
+func _on_validate() -> void:
+	_sync_meta()
+	_set_status(ArenaValidator.summarize(ArenaValidator.validate(_canvas.arena)))
+
+
+## Launch a match on the edited arena (#36). Refuses if validation finds errors;
+## otherwise registers the arena and hands it to a fresh match via MatchDirector.
+func _on_playtest() -> void:
+	_sync_meta()
+	var issues := ArenaValidator.validate(_canvas.arena)
+	if ArenaValidator.has_errors(issues):
+		_set_status("Cannot playtest:\n" + ArenaValidator.summarize(issues))
+		return
+	_ensure_id()
+	if not LevelRegistry.register_arena_data(_canvas.arena):
+		_set_status("Playtest failed: could not register arena")
+		return
+	MatchDirector.pending_arena_id = _canvas.arena.id
+	get_tree().change_scene_to_file(MATCH_SCENE)
+
+
+## Copy the id / name fields into the live arena before save / validate / play.
+func _sync_meta() -> void:
+	_canvas.arena.id = _id_field.text
+	_canvas.arena.display_name = _name_field.text
+
+
+## Guarantee the arena has a non-empty, file-safe id so it can be registered and
+## launched, deriving one from the name (or a fallback) when none was given.
+func _ensure_id() -> void:
+	var slug := ArenaStore.sanitize_id(_canvas.arena.id)
+	if slug.is_empty():
+		slug = ArenaStore.sanitize_id(_canvas.arena.display_name)
+	if slug.is_empty():
+		slug = PLAYTEST_FALLBACK_ID
+	_canvas.arena.id = slug
+	_id_field.text = slug
 
 
 func _on_load() -> void:
