@@ -116,6 +116,8 @@ func _build_tool_bar() -> Control:
 	var sep := VSeparator.new()
 	bar.add_child(sep)
 	bar.add_child(_make_button("Delete", _on_delete))
+	bar.add_child(_make_button("Undo", _on_undo))
+	bar.add_child(_make_button("Redo", _on_redo))
 
 	var sep2 := VSeparator.new()
 	bar.add_child(sep2)
@@ -123,7 +125,7 @@ func _build_tool_bar() -> Control:
 	bar.add_child(_make_button("Playtest", _on_playtest))
 
 	var hint := Label.new()
-	hint.text = "  (left: place/edit · middle/right drag: pan · wheel: zoom · Del: delete)"
+	hint.text = "  (left: place/edit · middle/right drag: pan · wheel: zoom · Del: delete · Ctrl+Z/Y: undo/redo)"
 	hint.modulate = Color(1, 1, 1, 0.6)
 	bar.add_child(hint)
 	return bar
@@ -146,6 +148,16 @@ func _on_tool_selected(tool_id: int) -> void:
 func _on_delete() -> void:
 	if _canvas.delete_selected():
 		_set_status("Deleted selection")
+
+
+func _on_undo() -> void:
+	if not _canvas.undo():
+		_set_status("Nothing to undo")
+
+
+func _on_redo() -> void:
+	if not _canvas.redo():
+		_set_status("Nothing to redo")
 
 
 func _on_arena_modified() -> void:
