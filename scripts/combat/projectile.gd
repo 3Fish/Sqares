@@ -69,6 +69,11 @@ func _physics_process(delta: float) -> void:
 
 	var collider := collision.get_collider()
 	if collider.has_method("take_damage"):
+		if not _is_hostile_node(collider):
+			# Friendly fire is off: pass through teammates instead of
+			# damaging them, rather than stopping/bouncing on contact.
+			add_collision_exception_with(collider)
+			return
 		collider.take_damage(damage, shooter if is_instance_valid(shooter) else null)
 		if knockback_force > 0.0 and collider.has_method("apply_knockback"):
 			collider.apply_knockback(velocity.normalized() * knockback_force)
@@ -117,6 +122,8 @@ func _detonate(center: Vector2, direct_target: Node) -> void:
 			continue
 		if not node.has_method("take_damage"):
 			continue
+		if not _is_hostile_node(node):
+			continue
 		if is_in_blast_radius(center, (node as Node2D).global_position, explosion_radius):
 			node.take_damage(damage, shooter if is_instance_valid(shooter) else null)
 
@@ -137,8 +144,42 @@ func _find_nearest_target() -> Node2D:
 	for node in get_tree().get_nodes_in_group(TARGET_GROUP):
 		if node == shooter or not (node is Node2D):
 			continue
+		if not _is_hostile_node(node):
+			continue
 		var d: float = global_position.distance_squared_to((node as Node2D).global_position)
 		if d < best:
 			best = d
 			nearest = node
 	return nearest
+
+
+# ---------------------------------------------------------------------------
+# Team / friendly-fire filtering (#26 / deferred #62)
+# ---------------------------------------------------------------------------
+
+## Whether a shot from this projectile's `shooter` may target / damage `node`.
+## Resolves both combatants' `player_id` and asks `GameManager` whether they are
+## enemies. A combatant whose team can't be resolved — a non-player target, or a
+## sourceless / freed shooter — is treated as hostile, so Free-for-all and any
+## non-team context behave exactly as before teams existed.
+func _is_hostile_node(node: Node) -> bool:
+	return is_hostile(_player_id_of(shooter), _player_id_of(node))
+
+
+## Pure hostility decision shared by the homing, splash, and direct-hit filters.
+## `shooter_id` / `target_id` are the combatants' player ids (or `null` when a
+## node isn't a team-tracked player). A `null` on either side is hostile;
+## otherwise the two are hostile only when GameManager places them on opposing
+## teams. Kept pure (over ids) so it is unit-testable without a scene tree.
+static func is_hostile(shooter_id: Variant, target_id: Variant) -> bool:
+	if shooter_id == null or target_id == null:
+		return true
+	return GameManager.are_enemies(int(shooter_id), int(target_id))
+
+
+## Reads a combatant's `player_id`, or `null` when the node is gone or isn't a
+## team-tracked player (exposes no such property).
+static func _player_id_of(node: Node) -> Variant:
+	if node == null or not is_instance_valid(node):
+		return null
+	return node.get("player_id")

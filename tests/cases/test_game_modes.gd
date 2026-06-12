@@ -132,6 +132,27 @@ func _test_record_win_ffa_is_per_player() -> void:
 
 
 # ---------------------------------------------------------------------------
+# GameManager.are_enemies — combat friendly-fire / target filtering (#62)
+# ---------------------------------------------------------------------------
+
+func _test_are_enemies_ffa_distinct_players_are_enemies() -> void:
+	GameManager.setup_match("crossroads", 4, 5)  # FFA: each player own team
+	assert_true(GameManager.are_enemies(0, 1), "FFA: distinct players are enemies")
+	assert_true(GameManager.are_enemies(2, 3), "FFA: distinct players are enemies")
+	assert_false(GameManager.are_enemies(1, 1), "a player is never its own enemy")
+
+
+func _test_are_enemies_teams_respects_assignment() -> void:
+	var teams := TeamsMode.new().assign_teams(4)  # {0:0,1:1,2:0,3:1}
+	GameManager.setup_match("crossroads", 4, 5, teams, &"teams")
+	assert_false(GameManager.are_enemies(0, 2), "teammates (0 & 2) are not enemies")
+	assert_false(GameManager.are_enemies(1, 3), "teammates (1 & 3) are not enemies")
+	assert_true(GameManager.are_enemies(0, 1), "opposing players are enemies")
+	assert_true(GameManager.are_enemies(2, 3), "opposing players are enemies")
+	assert_false(GameManager.are_enemies(2, 2), "a player is never its own enemy")
+
+
+# ---------------------------------------------------------------------------
 # GameManager.teams_remaining — round-end detection helper
 # ---------------------------------------------------------------------------
 

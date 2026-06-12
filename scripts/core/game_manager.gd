@@ -99,6 +99,15 @@ func wins_for_player(player_id: int) -> int:
 	return win_counts.get(team_for(player_id), 0)
 
 
+## True when two players may damage each other — i.e. they are on opposing
+## teams. Players sharing a team (including a player and itself) are friendly, so
+## friendly fire is suppressed. In Free-for-all every player is its own team, so
+## any two distinct players are enemies. Pure helper for combat target filtering
+## (homing, explosion splash, and direct-hit friendly fire).
+func are_enemies(player_a: int, player_b: int) -> bool:
+	return team_for(player_a) != team_for(player_b)
+
+
 ## Distinct team ids that still have at least one living player, given a list of
 ## alive player ids and a player_id -> team_id map. The round is over when this
 ## drops to one team (or zero, a draw). Static + pure for easy testing.
