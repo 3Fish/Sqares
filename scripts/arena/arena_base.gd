@@ -13,13 +13,20 @@ func _ready() -> void:
 
 
 ## Returns all spawn positions in a randomised order.
+##
+## The order is drawn from the seed-synced `RNGService` (#24) rather than
+## `Array.shuffle()`, which pulls from Godot's global, unsynced RNG. Routing it
+## through the shared stream means every peer orders the spawns identically in a
+## given round, so spawn assignment stays in sync once online play lands (#23/#27)
+## — `Array.shuffle()` would be a silent desync source there.
 func get_spawn_points() -> Array[Vector2]:
 	var points: Array[Vector2] = []
 	for child in get_children():
 		if child is Node2D and child.name.begins_with("Spawn"):
 			points.append(to_global(child.position))
-	points.shuffle()
-	return points
+	var ordered: Array[Vector2] = []
+	ordered.assign(RNGService.shuffled(points))
+	return ordered
 
 
 func _on_kill_zone_body_entered(body: Node2D) -> void:
