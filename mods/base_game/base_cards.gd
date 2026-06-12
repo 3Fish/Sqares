@@ -12,9 +12,12 @@ class_name BaseCards extends RefCounted
 ## is distributed across rarities so #17's weighted draw (which consumes
 ## `Card.RARITY_WEIGHTS`) produces a sensible commons-heavy distribution without
 ## any per-card weight overrides:
-##   COMMON x4, UNCOMMON x3, RARE x3, EPIC x1, LEGENDARY x1.
+##   COMMON x4, UNCOMMON x5, RARE x3, EPIC x1, LEGENDARY x1.
 ## Every card uses only stats already registered by the base game, so picking one
-## has a real gameplay effect today.
+## has a real gameplay effect today. The offense pillar now covers every
+## registered combat stat — including `bullet_scale` (Buckshot) and
+## `knockback_force` (Heavy Rounds), which previously had no card (deferred in
+## #60) even though `Weapon`/`Projectile` already consume them.
 
 
 ## A single card spec: id, name, rarity, flavour, and the additive stat deltas
@@ -64,6 +67,14 @@ static func specs() -> Array:
 			"high_velocity", "High-Velocity Rounds", Card.Rarity.UNCOMMON,
 			"Flatter, faster shots. +250 bullet speed.",
 			{"bullet_speed": 250.0}),
+		_Spec.new(
+			"buckshot", "Buckshot", Card.Rarity.UNCOMMON,
+			"Chunkier rounds with a fatter hitbox. +0.5 bullet size.",
+			{"bullet_scale": 0.5}),
+		_Spec.new(
+			"heavy_rounds", "Heavy Rounds", Card.Rarity.UNCOMMON,
+			"Shots hit like a truck and shove foes back. +350 knockback force.",
+			{"knockback_force": 350.0}),
 		_Spec.new(
 			"ricochet", "Ricochet", Card.Rarity.RARE,
 			"Shots carom off geometry. +2 bullet bounces.",

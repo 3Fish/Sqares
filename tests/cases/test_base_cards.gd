@@ -37,9 +37,9 @@ func before_each() -> void:
 
 # --- BaseCards.build -------------------------------------------------------
 
-func _test_build_returns_a_dozen_valid_unique_cards() -> void:
+func _test_build_returns_the_full_valid_unique_set() -> void:
 	var cards := BaseCards.build()
-	assert_eq(cards.size(), 12, "base set ships 12 cards")
+	assert_eq(cards.size(), 14, "base set ships 14 cards")
 	var ids := {}
 	for card in cards:
 		assert_true(card.is_valid(), "card '%s' is valid (non-empty id)" % card.id)
@@ -69,7 +69,7 @@ func _test_rarity_distribution_is_commons_heavy() -> void:
 	for card in BaseCards.build():
 		counts[card.rarity] = counts.get(card.rarity, 0) + 1
 	assert_eq(counts.get(Card.Rarity.COMMON, 0), 4, "four common cards")
-	assert_eq(counts.get(Card.Rarity.UNCOMMON, 0), 3, "three uncommon cards")
+	assert_eq(counts.get(Card.Rarity.UNCOMMON, 0), 5, "five uncommon cards")
 	assert_eq(counts.get(Card.Rarity.RARE, 0), 3, "three rare cards")
 	assert_eq(counts.get(Card.Rarity.EPIC, 0), 1, "one epic card")
 	assert_eq(counts.get(Card.Rarity.LEGENDARY, 0), 1, "one legendary card")
@@ -89,6 +89,35 @@ func _test_set_spans_all_three_pillars() -> void:
 	assert_true(touched.has("move_speed"), "movement pillar represented")
 	assert_true(touched.has("damage"), "offense pillar represented")
 	assert_true(touched.has("max_health"), "defense pillar represented")
+
+
+func _test_previously_uncarded_combat_stats_now_have_a_card() -> void:
+	# Regression for #60: bullet_scale and knockback_force are registered and
+	# consumed by Weapon/Projectile but had no card to grant them. Both must now
+	# be reachable through the base set.
+	var touched := {}
+	for card in BaseCards.build():
+		for stat_name in (card.effect as StatCardEffect).deltas:
+			touched[stat_name] = true
+	assert_true(touched.has("bullet_scale"), "a card now grants bullet_scale (Buckshot)")
+	assert_true(touched.has("knockback_force"), "a card now grants knockback_force (Heavy Rounds)")
+
+
+func _test_buckshot_and_heavy_rounds_carry_positive_deltas() -> void:
+	# The two new offense cards must hand out positive bonuses for the stat they
+	# advertise (a negative/zero delta would be a no-op or a downgrade).
+	var by_id := {}
+	for card in BaseCards.build():
+		by_id[card.id] = card
+
+	assert_true(by_id.has("buckshot"), "Buckshot card exists")
+	assert_true(by_id.has("heavy_rounds"), "Heavy Rounds card exists")
+
+	var buckshot: StatCardEffect = by_id["buckshot"].effect
+	assert_true(buckshot.deltas.get("bullet_scale", 0.0) > 0.0, "Buckshot grows bullet_scale")
+
+	var heavy: StatCardEffect = by_id["heavy_rounds"].effect
+	assert_true(heavy.deltas.get("knockback_force", 0.0) > 0.0, "Heavy Rounds adds knockback_force")
 
 
 # --- StatCardEffect --------------------------------------------------------
