@@ -16,6 +16,12 @@ var homing: float = 0.0
 var knockback_force: float = 0.0
 var explosion_radius: float = 0.0
 var shooter: Node = null
+## True for client-side instances (predicted or replicated, #27): they fly and
+## bounce for feedback but never deal damage — hits are adjudicated host-only.
+var visual_only: bool = false
+## Replication id echoed between a client's predicted shot and the host's
+## authoritative confirmation (#27). Empty for purely local projectiles.
+var net_id: String = ""
 
 var _lifetime: float = 6.0
 var _base_gravity: float
@@ -69,6 +75,12 @@ func _physics_process(delta: float) -> void:
 
 	var collider := collision.get_collider()
 	if collider.has_method("take_damage"):
+		if visual_only:
+			# Client-side instance: impact feedback only; the host resolves the
+			# real hit and its damage arrives via snapshot / death event.
+			SfxDirector.play(SfxDirector.HIT)
+			queue_free()
+			return
 		collider.take_damage(damage, shooter if is_instance_valid(shooter) else null)
 		if knockback_force > 0.0 and collider.has_method("apply_knockback"):
 			collider.apply_knockback(velocity.normalized() * knockback_force)

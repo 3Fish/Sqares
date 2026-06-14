@@ -88,6 +88,13 @@ func _on_round_started(round_number: int) -> void:
 # Draw API (consumed by card draws #17 and effects #20)
 # ---------------------------------------------------------------------------
 
+## The live seeded generator, for draw helpers that take a plain
+## RandomNumberGenerator (e.g. `CardDraw.weighted_draw`). Consuming values
+## through it advances the synced stream like any other draw.
+func generator() -> RandomNumberGenerator:
+	return _rng
+
+
 func randf() -> float:
 	return _rng.randf()
 

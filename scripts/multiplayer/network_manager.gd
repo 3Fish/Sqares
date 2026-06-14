@@ -131,6 +131,26 @@ func slot_of(peer_id: int) -> int:
 	return peers[peer_id].get("slot", -1) if peers.has(peer_id) else -1
 
 
+## The local machine's assigned player slot, or -1 when offline or the roster
+## hasn't been mirrored yet. On the host this is always slot 0.
+func local_slot() -> int:
+	if not is_networked() or multiplayer == null or multiplayer.multiplayer_peer == null:
+		return -1
+	return slot_of(multiplayer.get_unique_id())
+
+
+## Client side of the lobby mirror (#27): adopts the host's authoritative
+## roster wholesale, replacing any local view. Values are coerced defensively
+## since the payload crossed the wire.
+func adopt_roster(roster: Dictionary) -> void:
+	peers.clear()
+	for peer_id in roster:
+		var info = roster[peer_id]
+		if info is Dictionary:
+			peers[int(peer_id)] = {"slot": int(info.get("slot", -1))}
+	lobby_changed.emit()
+
+
 func peer_count() -> int:
 	return peers.size()
 

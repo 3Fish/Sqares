@@ -19,6 +19,10 @@ var player_id: int = 0
 var position: Vector2 = Vector2.ZERO
 var velocity: Vector2 = Vector2.ZERO
 var health: float = 0.0
+## Sequence number of the last input the host had processed for this player
+## when the snapshot was captured (#27). Clients use it to ack their prediction
+## history; 0 means "no input processed yet" (e.g. host-simulated locals).
+var last_input_seq: int = 0
 
 
 ## Serialises to a flat, JSON-portable dictionary. Vectors are flattened to
@@ -29,6 +33,7 @@ func to_dict() -> Dictionary:
 		"position": [position.x, position.y],
 		"velocity": [velocity.x, velocity.y],
 		"health": health,
+		"last_input_seq": last_input_seq,
 	}
 
 
@@ -40,18 +45,22 @@ static func from_dict(data: Dictionary) -> NetPlayerState:
 	s.position = _to_vec2(data.get("position", null))
 	s.velocity = _to_vec2(data.get("velocity", null))
 	s.health = float(data.get("health", 0.0))
+	s.last_input_seq = int(data.get("last_input_seq", 0))
 	return s
 
 
 ## Reads a snapshot off a live `Player` node (or any object exposing
 ## `player_id`, `global_position`, `velocity`, and a `health` with `current_hp`).
-static func capture(player: Object) -> NetPlayerState:
+## `last_input_seq` is bookkeeping the host owns (not player state), so it is
+## passed in rather than read off the node.
+static func capture(player: Object, p_last_input_seq: int = 0) -> NetPlayerState:
 	var s := NetPlayerState.new()
 	if player == null:
 		return s
 	s.player_id = int(player.get("player_id"))
 	s.position = player.get("global_position")
 	s.velocity = player.get("velocity")
+	s.last_input_seq = p_last_input_seq
 	var hp = player.get("health")
 	if hp != null:
 		s.health = float(hp.current_hp)
