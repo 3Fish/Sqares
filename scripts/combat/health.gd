@@ -38,6 +38,17 @@ func take_damage(amount: float, attacker: Node = null) -> void:
 		died.emit(attacker)
 
 
+## Authoritative kill (#27): drops HP to zero and emits `died`, bypassing
+## shields and local damage maths. Used when the host has already adjudicated
+## this death and a client only needs to mirror the outcome.
+func kill(killer: Node = null) -> void:
+	if _dead:
+		return
+	current_hp = 0.0
+	_dead = true
+	died.emit(killer)
+
+
 func heal(amount: float) -> void:
 	if _dead:
 		return

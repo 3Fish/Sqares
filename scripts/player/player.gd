@@ -13,12 +13,36 @@ const ACCELERATION := 1800.0
 const FRICTION := 2400.0
 ## Terminal fall speed in pixels/s.
 const MAX_FALL_SPEED := 900.0
+## Max position error, in pixels, tolerated between this client's prediction
+## and the host's authoritative state before rewinding + replaying (#27).
+const RECONCILE_TOLERANCE := 8.0
+
+## Who drives this player's simulation (#27):
+## - LOCAL: samples this machine's input and simulates authoritatively
+##   (offline players, and the host's own player).
+## - PREDICTED: a networked client's own player — samples local input, applies
+##   it immediately for responsiveness, and is corrected against host
+##   snapshots (rewind + replay on disagreement).
+## - SIMULATED: the host's stand-in for a remote client, driven by that
+##   client's replicated input stream. Shots fire via reliable fire intents
+##   (which carry the exact aim + projectile id), not the input's shoot bit.
+## - PUPPET: a client's view of any other player — no simulation; position,
+##   velocity, and health are applied directly from snapshots.
+enum NetRole { LOCAL, PREDICTED, SIMULATED, PUPPET }
 
 var player_id: int = 0
+## Action-map id this player samples ("p%d_*" with id + 1). Defaults to
+## player_id; a networked client's own player overrides this to 0 so the
+## machine's primary (p1) bindings drive it regardless of its slot.
+var input_id: int = -1
+var net_role: NetRole = NetRole.LOCAL
 var stats: PlayerStats
 var move_speed: float
 var jump_force: float
 var gravity_scale: float
+
+## Client-side prediction history for reconciliation (#27).
+var prediction := NetPrediction.new()
 
 var _base_gravity: float
 var _coyote_timer: float = 0.0
@@ -26,6 +50,10 @@ var _jump_buffer_timer: float = 0.0
 var _was_on_floor: bool = false
 var _facing_dir: float = 1.0
 var _dead: bool = false
+var _input_seq: int = 0
+## Last replicated input a SIMULATED player applied; held across ticks the
+## input stream skips so packet loss doesn't read as a released stick.
+var _last_net_input: NetPlayerInput = null
 
 @onready var health: Health = $Health
 @onready var weapon: Weapon = $Weapon
@@ -34,6 +62,8 @@ signal player_died(player: Player, killer: Node)
 
 
 func _ready() -> void:
+	if input_id < 0:
+		input_id = player_id
 	_base_gravity = ProjectSettings.get_setting("physics/2d/default_gravity", 980.0)
 	stats = PlayerStats.new(StatRegistry.get_defaults())
 	_sync_stats(true)
@@ -45,15 +75,60 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	if _dead:
 		return
+	match net_role:
+		NetRole.LOCAL:
+			_step(_sample_input(), delta)
+		NetRole.PREDICTED:
+			var input := _sample_input()
+			_step(input, delta)
+			prediction.record(input, global_position, velocity)
+			NetReplicator.send_player_inputs(self)
+		NetRole.SIMULATED:
+			var input: NetPlayerInput = NetReplicator.pull_input(player_id)
+			if input == null:
+				# No fresh input this tick (loss / jitter): hold the previous
+				# stick state, but never replay a one-shot jump press.
+				input = _last_net_input if _last_net_input != null else NetPlayerInput.new()
+				input.jump = false
+			_last_net_input = input
+			_step(input, delta)
+		NetRole.PUPPET:
+			pass  # state arrives via snapshots (NetReplicator)
+
+
+# ---------------------------------------------------------------------------
+# Simulation step (shared by local play, host simulation, and replay)
+# ---------------------------------------------------------------------------
+
+## Advances one physics tick from an explicit input. `replay` suppresses
+## shooting so a reconciliation replay can't re-fire already-sent shots.
+func _step(input: NetPlayerInput, delta: float, replay: bool = false) -> void:
 	var on_floor := is_on_floor()  # prev frame result — consistent reference for this tick
 	_tick_coyote(delta, on_floor)
 	_was_on_floor = on_floor
-	_tick_jump_buffer(delta)
-	_apply_gravity(delta)
-	_apply_horizontal(delta)
-	_try_jump()
-	_handle_shoot()
+	_tick_jump_buffer(delta, input.jump)
+	_apply_gravity(delta, input.move_axis)
+	_apply_horizontal(delta, input.move_axis)
+	_try_jump(input.move_axis)
+	if not replay:
+		_handle_shoot(input)
 	move_and_slide()
+
+
+## Samples this machine's input for one tick. Each sample takes the next
+## sequence number so a PREDICTED player's stream is host-ackable; for LOCAL
+## players the seq is simply unused.
+func _sample_input() -> NetPlayerInput:
+	var input := NetPlayerInput.new()
+	_input_seq += 1
+	input.seq = _input_seq
+	var p := input_id + 1
+	input.move_axis = Input.get_axis("p%d_move_left" % p, "p%d_move_right" % p)
+	input.jump = Input.is_action_just_pressed("p%d_jump" % p)
+	input.shoot = Input.is_action_pressed("p%d_shoot" % p)
+	if input.shoot:
+		input.aim = _get_aim_direction()
+	return input
 
 
 # ---------------------------------------------------------------------------
@@ -67,36 +142,35 @@ func _tick_coyote(delta: float, on_floor: bool) -> void:
 	_coyote_timer = maxf(_coyote_timer - delta, 0.0)
 
 
-func _tick_jump_buffer(delta: float) -> void:
-	if Input.is_action_just_pressed("p%d_jump" % (player_id + 1)):
+func _tick_jump_buffer(delta: float, jump_pressed: bool) -> void:
+	if jump_pressed:
 		_jump_buffer_timer = JUMP_BUFFER_TIME
 	_jump_buffer_timer = maxf(_jump_buffer_timer - delta, 0.0)
 
 
-func _apply_gravity(delta: float) -> void:
+func _apply_gravity(delta: float, move_axis: float) -> void:
 	if is_on_floor():
 		velocity.y = 0.0
 		return
 	var grav_mult := gravity_scale
-	if _is_wall_sliding():
+	if _is_wall_sliding(move_axis):
 		velocity.y = maxf(velocity.y, 0.0)  # kill upward momentum on wall contact
 		grav_mult *= WALL_SLIDE_GRAVITY_MULT
 	velocity.y = minf(velocity.y + _base_gravity * grav_mult * delta, MAX_FALL_SPEED)
 
 
-func _apply_horizontal(delta: float) -> void:
-	var dir := Input.get_axis("p%d_move_left" % (player_id + 1), "p%d_move_right" % (player_id + 1))
-	if dir != 0.0:
-		velocity.x = move_toward(velocity.x, dir * move_speed, ACCELERATION * delta)
-		_facing_dir = sign(dir)
+func _apply_horizontal(delta: float, move_axis: float) -> void:
+	if move_axis != 0.0:
+		velocity.x = move_toward(velocity.x, move_axis * move_speed, ACCELERATION * delta)
+		_facing_dir = sign(move_axis)
 	else:
 		velocity.x = move_toward(velocity.x, 0.0, FRICTION * delta)
 
 
-func _try_jump() -> void:
+func _try_jump(move_axis: float) -> void:
 	if _jump_buffer_timer <= 0.0:
 		return
-	if _is_wall_sliding():
+	if _is_wall_sliding(move_axis):
 		velocity.y = -jump_force
 		velocity.x = get_wall_normal().x * move_speed
 		_jump_buffer_timer = 0.0
@@ -108,31 +182,42 @@ func _try_jump() -> void:
 		_jump_buffer_timer = 0.0
 
 
-func _is_wall_sliding() -> bool:
+func _is_wall_sliding(move_axis: float) -> bool:
 	if not is_on_wall() or is_on_floor():
 		return false
-	var dir := Input.get_axis("p%d_move_left" % (player_id + 1), "p%d_move_right" % (player_id + 1))
-	if dir == 0.0:
+	if move_axis == 0.0:
 		return false
 	# True when the player is pressing into (not away from) the wall.
-	return sign(dir) == -sign(get_wall_normal().x)
+	return sign(move_axis) == -sign(get_wall_normal().x)
 
 
 # ---------------------------------------------------------------------------
 # Combat helpers
 # ---------------------------------------------------------------------------
 
-func _handle_shoot() -> void:
-	if not Input.is_action_pressed("p%d_shoot" % (player_id + 1)):
+func _handle_shoot(input: NetPlayerInput) -> void:
+	if not input.shoot:
 		return
-	weapon.try_fire(_get_aim_direction())
+	match net_role:
+		NetRole.PREDICTED:
+			# Fire a local visual-only shot immediately for responsiveness; the
+			# host validates the intent and replicates the authoritative
+			# projectile back, echoing the predicted instance's id (#27).
+			var predicted := weapon.try_fire(input.aim)
+			if predicted:
+				NetReplicator.send_fire_intent(self, predicted, input.aim)
+		NetRole.SIMULATED:
+			pass  # the host fires on the client's reliable fire intent instead
+		_:
+			weapon.try_fire(input.aim)
 
 
 func _get_aim_direction() -> Vector2:
+	var p := input_id + 1
 	# Gamepad right stick takes priority over mouse.
 	var stick := Vector2(
-		Input.get_axis("p%d_aim_left" % (player_id + 1), "p%d_aim_right" % (player_id + 1)),
-		Input.get_axis("p%d_aim_up" % (player_id + 1),   "p%d_aim_down" % (player_id + 1)),
+		Input.get_axis("p%d_aim_left" % p, "p%d_aim_right" % p),
+		Input.get_axis("p%d_aim_up" % p,   "p%d_aim_down" % p),
 	)
 	if stick.length_squared() > 0.25:
 		return stick.normalized()
@@ -158,10 +243,36 @@ func apply_knockback(impulse: Vector2) -> void:
 	velocity += impulse
 
 
-## Forwards damage this player actually took to the effect engine so the victim's
-## defensive / retaliation effects (`on_take_damage`) fire. Fed by `Health.damaged`,
-## which only emits when HP is lost (shield-absorbed hits trigger nothing).
+# ---------------------------------------------------------------------------
+# Reconciliation (client-side, #27)
+# ---------------------------------------------------------------------------
+
+## Applies an authoritative snapshot state to this PREDICTED player: health is
+## adopted outright (damage is host-only), the prediction history is acked up
+## to the host's last processed input, and — when the authoritative position
+## disagrees beyond RECONCILE_TOLERANCE — the player rewinds to the host state
+## and replays its still-pending inputs.
+func reconcile(auth: NetPlayerState) -> void:
+	health.current_hp = auth.health
+	var predicted = prediction.state_at(auth.last_input_seq)
+	prediction.ack(auth.last_input_seq)
+	if predicted == null:
+		return  # ack predates / outruns our history; nothing to compare
+	if not NetPrediction.needs_correction(predicted["position"], auth.position, RECONCILE_TOLERANCE):
+		return
+	global_position = auth.position
+	velocity = auth.velocity
+	var delta := get_physics_process_delta_time()
+	for entry in prediction.pending():
+		_step(entry["input"], delta, true)
+		entry["position"] = global_position
+		entry["velocity"] = velocity
+
+
 func _on_damaged(amount: float, attacker: Node) -> void:
+	# Forwards damage this player actually took to the effect engine so the
+	# victim's defensive / retaliation effects (`on_take_damage`) fire. Fed by
+	# `Health.damaged`, which only emits when HP is lost.
 	EffectEngine.notify_take_damage(self, attacker, amount)
 
 

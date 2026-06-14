@@ -33,6 +33,7 @@ MusicDirector="*res://scripts/audio/music_director.gd"
 SfxDirector="*res://scripts/audio/sfx_director.gd"
 NetworkManager="*res://scripts/multiplayer/network_manager.gd"
 RNGService="*res://scripts/multiplayer/rng_service.gd"
+NetReplicator="*res://scripts/multiplayer/net_replicator.gd"
 
 [display]
 

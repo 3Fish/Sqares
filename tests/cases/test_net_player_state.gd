@@ -70,6 +70,21 @@ func _test_capture_reads_from_player() -> void:
 	assert_almost_eq(s.health, 55.0, "captures current_hp")
 
 
+func _test_last_input_seq_roundtrips() -> void:
+	# The ack field added for input reconciliation (#27) serialises and is
+	# passed into capture (host bookkeeping, not read off the node).
+	var s := NetPlayerState.new()
+	s.last_input_seq = 88
+	assert_eq(s.to_dict()["last_input_seq"], 88, "ack serialised")
+	assert_eq(NetPlayerState.from_dict(s.to_dict()).last_input_seq, 88, "ack round-trips")
+	assert_eq(NetPlayerState.from_dict({}).last_input_seq, 0, "missing ack -> 0")
+	var hp := _StubHealth.new()
+	var p := _StubPlayer.new()
+	p.health = hp
+	assert_eq(NetPlayerState.capture(p, 12).last_input_seq, 12, "capture stores the passed ack")
+	assert_eq(NetPlayerState.capture(p).last_input_seq, 0, "default ack is 0")
+
+
 func _test_capture_null_player_is_safe() -> void:
 	var s := NetPlayerState.capture(null)
 	assert_not_null(s, "returns a default snapshot, not null")

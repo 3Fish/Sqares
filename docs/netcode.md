@@ -78,15 +78,77 @@ It is plain, scene-free, and JSON-portable (`to_dict` / `from_dict`), and offers
 node (duck-typed, so a test stub works too).
 
 The authority captures a snapshot per network tick and broadcasts it; clients
-apply it. The transport itself (the RPC fan-out, tick rate, interpolation) and
-the projectile / spawn / health-event replication and **input reconciliation**
-are the explicit scope of **#27** — this issue establishes the model, the lobby,
-and the snapshot contract they consume.
+apply it. The transport that drives this — the RPC fan-out, tick rate, and the
+projectile / health-event / round replication plus **input reconciliation** —
+is `NetReplicator` (#27), described next; this foundation establishes the
+model, the lobby, and the snapshot contract it consumes.
 
-## What this foundation deliberately leaves to later issues
+## Combat-state replication + input reconciliation (`scripts/multiplayer/net_replicator.gd`)
 
-- **#24** — deterministic RNG: the service exists; wiring `seed_match()` over the
-  host→client broadcast described above is its remaining "synced" half (#64).
-- **#27** — full combat-state replication (projectiles, health events, spawns)
-  and input reconciliation / prediction.
-- **#28** — disconnect/reconnect handling and latency smoothing.
+`NetReplicator` is the autoload that runs an online match on top of the
+foundation above. It is a **manual RPC fan-out** (no `MultiplayerSynchronizer`)
+on the authoritative-host model: the host owns canonical state, clients predict
+their own player locally and reconcile against the host.
+
+### Roles
+
+Every spawned `Player` carries a `net_role` (`Player.NetRole`) that
+`MatchDirector.resolve_net_role` assigns from the lobby:
+
+| Role | Where | Drives the player from |
+| --- | --- | --- |
+| `LOCAL` | offline play; the host's own square | this machine's input, simulated authoritatively |
+| `PREDICTED` | a client's own square | local input applied immediately, corrected against host snapshots |
+| `SIMULATED` | the host's view of a remote client | that client's replicated input stream |
+| `PUPPET` | a client's view of any other square | host snapshots, applied directly (no simulation) |
+
+### The three streams
+
+- **Input (client → host, unreliable, redundant).** Each `PREDICTED` player
+  samples a `NetPlayerInput` per physics tick — a monotonically increasing
+  `seq`, the move axis, jump edge, shoot, and aim — applies it immediately, and
+  records it in a `NetPrediction` history. Every tick it resends the newest
+  unacked window (so loss self-heals). The host folds each window into a
+  per-player queue (`merge_input` dedupes by `seq`), simulates `SIMULATED`
+  players from it, and records the last processed `seq` as the per-player ack.
+- **Snapshots (host → clients, unreliable, newest-wins).** Every
+  `NET_TICK_INTERVAL` physics ticks the host packs all players into one
+  `NetSnapshot` (a host `tick`, and per player position / velocity / health /
+  `last_input_seq`) and broadcasts it. Clients drop stale ticks, apply state
+  directly to `PUPPET`s, and **reconcile** their `PREDICTED` player: ack the
+  history up to `last_input_seq`, and if the authoritative position disagrees by
+  more than `RECONCILE_TOLERANCE`, rewind to it and replay the still-pending
+  inputs. `tick` is on the wire from day one so #28 can add an interpolation
+  buffer without a format change.
+- **Events (host → clients, reliable, ordered).** One-shot things that must not
+  be lost: projectile spawns/rejections, deaths (`player_died`), the round
+  lifecycle (`round_start` / `fight` / `round_end` / `match_end` /
+  `match_restart`), the lobby roster mirror, and the match RNG seed. The client
+  `MatchDirector` mirrors the host's rounds off these instead of running its own
+  round-end detection.
+
+### Projectiles
+
+Shooter-side prediction, host-authoritative resolution. A `PREDICTED` shot
+spawns a **visual-only** projectile immediately and sends a fire intent with a
+client-generated `net_id`; the host validates it (slot ownership, alive, weapon
+cooldown), fires the authoritative projectile, and replicates it back echoing
+the `net_id` so the shooter adopts its predicted instance (or frees it on
+rejection). **All hit detection and damage are host-only** — every projectile a
+client spawns is `visual_only` and never calls `take_damage`.
+
+### Synced seed + roster
+
+Two seams the foundation left open are wired here: on match start the host
+broadcasts `RNGService.seed_match()` so card draws / effect rolls (#24) agree on
+every peer, and whenever the lobby changes the host pushes its authoritative
+roster to clients (`NetworkManager.adopt_roster`) so each client learns its slot.
+
+## What this layer deliberately leaves to later issues
+
+- **#28** — disconnect/reconnect handling and latency smoothing (snapshot
+  interpolation/extrapolation of `PUPPET`s; this layer is "correct but
+  unsmoothed", so remote squares step at the net tick rate).
+- Online **card selection** (remote losers picking on their own screens) is not
+  wired — networked matches skip the selection phase for now (see the #27
+  deferred follow-up).
