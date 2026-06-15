@@ -141,3 +141,47 @@ func _test_tool_switch_mid_drag_commits_the_applied_edit() -> void:
 	assert_eq(_canvas.arena.platforms[0]["position"], Vector2(96, 0), "move stayed applied")
 	assert_true(_canvas.undo(), "interrupted drag is one undoable step")
 	assert_eq(_canvas.arena.platforms[0]["position"], Vector2.ZERO, "undo restored the position")
+
+
+# --- selection restore on undo/redo (#79) -----------------------------------
+
+func _test_redo_reselects_the_placed_element_and_undo_clears_it() -> void:
+	_canvas.set_arena(ArenaData.new())
+	_canvas.set_tool(ArenaEditTools.Tool.PLATFORM)
+	_canvas._on_left_press(Vector2.ZERO, Vector2.ZERO)
+	_canvas._on_left_release(Vector2.ZERO, Vector2.ZERO)
+	assert_eq(_canvas.sel_kind, ArenaEditTools.Kind.PLATFORM, "placing selects the new platform")
+	assert_eq(_canvas.sel_index, 0, "placed platform is index 0")
+	# Undo: the pre-edit state had nothing selected, so the selection clears.
+	assert_true(_canvas.undo(), "placement undone")
+	assert_eq(_canvas.sel_kind, ArenaEditTools.Kind.NONE, "undo restored the empty pre-edit selection")
+	# Redo: the platform returns and is reselected (no longer dropped, the #79 fix).
+	assert_true(_canvas.redo(), "placement redone")
+	assert_eq(_canvas.sel_kind, ArenaEditTools.Kind.PLATFORM, "redo reselected the platform")
+	assert_eq(_canvas.sel_index, 0, "reselected index 0")
+
+
+func _test_undo_preserves_selection_across_a_move() -> void:
+	var data := ArenaData.new().add_platform(Vector2.ZERO, Vector2(64, 64))
+	_canvas.set_arena(data)
+	_canvas.set_tool(ArenaEditTools.Tool.SELECT)
+	_canvas._select(ArenaEditTools.Kind.PLATFORM, 0)
+	_canvas._on_left_press(Vector2.ZERO, Vector2.ZERO)
+	_canvas._apply_move(Vector2(96, 0))
+	_canvas._on_left_release(Vector2(96, 0), Vector2(200, 0))
+	assert_true(_canvas.undo(), "move undone")
+	assert_eq(_canvas.arena.platforms[0]["position"], Vector2.ZERO, "position restored")
+	assert_eq(_canvas.sel_kind, ArenaEditTools.Kind.PLATFORM, "the moved element stays selected")
+	assert_eq(_canvas.sel_index, 0, "same element selected after undo")
+
+
+func _test_restore_selection_drops_indices_that_no_longer_exist() -> void:
+	var data := ArenaData.new().add_platform(Vector2.ZERO, Vector2(32, 32))
+	_canvas.set_arena(data)
+	# A recorded selection pointing past the restored arena is dropped...
+	_canvas._restore_selection({"kind": ArenaEditTools.Kind.PLATFORM, "index": 5})
+	assert_eq(_canvas.sel_kind, ArenaEditTools.Kind.NONE, "stale selection dropped")
+	# ...while a valid one is reapplied.
+	_canvas._restore_selection({"kind": ArenaEditTools.Kind.PLATFORM, "index": 0})
+	assert_eq(_canvas.sel_kind, ArenaEditTools.Kind.PLATFORM, "valid selection reapplied")
+	assert_eq(_canvas.sel_index, 0, "index reapplied")
