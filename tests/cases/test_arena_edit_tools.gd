@@ -108,3 +108,81 @@ func _test_resize_with_no_handle_is_identity() -> void:
 	var result := Tools.resize_rect(Vector2(5, 5), Vector2(30, 30), Tools.Handle.NONE, Vector2(999, 999))
 	_assert_vec(result["position"], Vector2(5, 5), "centre unchanged")
 	_assert_vec(result["size"], Vector2(30, 30), "size unchanged")
+
+
+# --- property inspector: field capabilities ---------------------------------
+
+func _test_has_size_only_for_rectangles() -> void:
+	assert_true(Tools.has_size(Tools.Kind.PLATFORM), "platforms have size")
+	assert_true(Tools.has_size(Tools.Kind.KILL_ZONE), "kill zones have size")
+	assert_false(Tools.has_size(Tools.Kind.SPAWN), "spawn points are points")
+	assert_false(Tools.has_size(Tools.Kind.NONE), "no selection has no size")
+
+
+func _test_has_color_only_for_platforms() -> void:
+	assert_true(Tools.has_color(Tools.Kind.PLATFORM), "platforms have colour")
+	assert_false(Tools.has_color(Tools.Kind.KILL_ZONE), "kill zones have no colour field")
+	assert_false(Tools.has_color(Tools.Kind.SPAWN), "spawns have no colour field")
+
+
+func _test_element_exists_validates_kind_and_index() -> void:
+	var a := _make_arena()  # 2 platforms, 1 kill zone, 2 spawns
+	assert_true(Tools.element_exists(a, Tools.Kind.PLATFORM, 1), "platform 1 exists")
+	assert_false(Tools.element_exists(a, Tools.Kind.PLATFORM, 2), "platform 2 out of range")
+	assert_true(Tools.element_exists(a, Tools.Kind.KILL_ZONE, 0), "kill zone 0 exists")
+	assert_false(Tools.element_exists(a, Tools.Kind.KILL_ZONE, 1), "kill zone 1 out of range")
+	assert_true(Tools.element_exists(a, Tools.Kind.SPAWN, 1), "spawn 1 exists")
+	assert_false(Tools.element_exists(a, Tools.Kind.SPAWN, -1), "negative index rejected")
+	assert_false(Tools.element_exists(a, Tools.Kind.NONE, 0), "NONE kind never exists")
+	assert_false(Tools.element_exists(null, Tools.Kind.PLATFORM, 0), "null arena rejected")
+
+
+# --- property inspector: reads ----------------------------------------------
+
+func _test_element_position_reads_each_kind() -> void:
+	var a := _make_arena()
+	_assert_vec(Tools.element_position(a, Tools.Kind.PLATFORM, 0), Vector2(0, 0), "platform centre")
+	_assert_vec(Tools.element_position(a, Tools.Kind.KILL_ZONE, 0), Vector2(200, 0), "kill zone centre")
+	_assert_vec(Tools.element_position(a, Tools.Kind.SPAWN, 0), Vector2(-300, -100), "spawn point")
+	_assert_vec(Tools.element_position(a, Tools.Kind.PLATFORM, 9), Vector2.ZERO, "invalid -> ZERO")
+
+
+func _test_element_size_only_for_rectangles() -> void:
+	var a := _make_arena()
+	_assert_vec(Tools.element_size(a, Tools.Kind.PLATFORM, 0), Vector2(100, 40), "platform size")
+	_assert_vec(Tools.element_size(a, Tools.Kind.KILL_ZONE, 0), Vector2(60, 60), "kill zone size")
+	_assert_vec(Tools.element_size(a, Tools.Kind.SPAWN, 0), Vector2.ZERO, "spawn has no size")
+
+
+func _test_element_color_only_for_platforms() -> void:
+	var a: ArenaData = ArenaDataScript.new()
+	a.add_platform(Vector2.ZERO, Vector2(64, 16), Color(0.2, 0.4, 0.6, 1.0))
+	a.add_kill_zone(Vector2(0, 0), Vector2(32, 32))
+	assert_eq(Tools.element_color(a, Tools.Kind.PLATFORM, 0), Color(0.2, 0.4, 0.6, 1.0), "platform colour")
+	assert_eq(Tools.element_color(a, Tools.Kind.KILL_ZONE, 0), Color.WHITE, "kill zone -> WHITE default")
+
+
+# --- property inspector: writes ---------------------------------------------
+
+func _test_set_element_position_moves_each_kind() -> void:
+	var a := _make_arena()
+	assert_true(Tools.set_element_position(a, Tools.Kind.PLATFORM, 0, Vector2(11, 22)), "applied")
+	_assert_vec(a.platforms[0]["position"], Vector2(11, 22), "platform moved")
+	assert_true(Tools.set_element_position(a, Tools.Kind.SPAWN, 1, Vector2(7, -7)), "applied")
+	_assert_vec(a.spawn_points[1], Vector2(7, -7), "spawn moved")
+	assert_false(Tools.set_element_position(a, Tools.Kind.KILL_ZONE, 5, Vector2(1, 1)), "invalid index no-op")
+
+
+func _test_set_element_size_clamps_to_minimum() -> void:
+	var a := _make_arena()
+	assert_true(Tools.set_element_size(a, Tools.Kind.PLATFORM, 0, Vector2(200, 8)), "applied")
+	# Width kept; height floored to the minimum rectangle extent.
+	_assert_vec(a.platforms[0]["size"], Vector2(200, Tools.MIN_RECT_SIZE.y), "height clamped")
+	assert_false(Tools.set_element_size(a, Tools.Kind.SPAWN, 0, Vector2(50, 50)), "spawns have no size")
+
+
+func _test_set_element_color_only_on_platforms() -> void:
+	var a := _make_arena()
+	assert_true(Tools.set_element_color(a, Tools.Kind.PLATFORM, 0, Color.RED), "applied")
+	assert_eq(a.platforms[0]["color"], Color.RED, "platform recoloured")
+	assert_false(Tools.set_element_color(a, Tools.Kind.KILL_ZONE, 0, Color.RED), "kill zone has no colour")

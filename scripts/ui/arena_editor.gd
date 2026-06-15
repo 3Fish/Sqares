@@ -21,6 +21,20 @@ var _load_picker: OptionButton
 var _status: Label
 var _tool_group: ButtonGroup
 
+# Per-element property inspector (#72).
+var _inspector_type: Label
+var _pos_row: Control
+var _size_row: Control
+var _color_row: Control
+var _pos_x: SpinBox
+var _pos_y: SpinBox
+var _size_w: SpinBox
+var _size_h: SpinBox
+var _color_btn: ColorPickerButton
+## True while the inspector is being repopulated, so programmatic widget updates
+## don't echo back as user edits.
+var _refreshing: bool = false
+
 
 func _ready() -> void:
 	ArenaStore.ensure_dir()
@@ -42,12 +56,21 @@ func _ready() -> void:
 	_canvas.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_canvas.clip_contents = true
 	_canvas.arena_modified.connect(_on_arena_modified)
+	_canvas.selection_changed.connect(_on_selection_changed)
 
 	root.add_child(_build_tool_bar())
-	root.add_child(_canvas)
+
+	# Canvas + property inspector share the remaining vertical space.
+	var body := HBoxContainer.new()
+	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	body.add_child(_canvas)
+	body.add_child(_build_inspector())
+	root.add_child(body)
 
 	_new_arena()
 	_refresh_load_picker()
+	_refresh_inspector(_canvas.sel_kind, _canvas.sel_index)
 
 
 func _build_toolbar() -> Control:
@@ -165,6 +188,151 @@ func _on_arena_modified() -> void:
 	_set_status("%d platform(s), %d spawn(s), %d kill zone(s)" % [
 		a.platforms.size(), a.spawn_points.size(), a.kill_zones.size()
 	])
+	# Geometry may have moved/resized under a live selection (drag, undo/redo);
+	# keep the inspector's numbers in sync with the canonical values.
+	_refresh_inspector(_canvas.sel_kind, _canvas.sel_index)
+
+
+# --- Property inspector (#72) ----------------------------------------------
+
+## Build the right-hand panel that numerically edits the selected element's
+## position, size (platforms / kill zones) and colour (platforms). Widget
+## changes route through the canvas so each edit is one undoable step.
+func _build_inspector() -> Control:
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(200, 0)
+	panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	panel.add_child(vbox)
+
+	var title := Label.new()
+	title.text = "Inspector"
+	title.add_theme_font_size_override("font_size", 16)
+	vbox.add_child(title)
+
+	_inspector_type = Label.new()
+	_inspector_type.text = "No selection"
+	vbox.add_child(_inspector_type)
+
+	_pos_x = _make_spin(true)
+	_pos_y = _make_spin(true)
+	_pos_x.value_changed.connect(func(_v: float) -> void: _on_position_field_changed())
+	_pos_y.value_changed.connect(func(_v: float) -> void: _on_position_field_changed())
+	_pos_row = _make_field_row("Position", [_labeled("X", _pos_x), _labeled("Y", _pos_y)])
+	vbox.add_child(_pos_row)
+
+	_size_w = _make_spin(false)
+	_size_h = _make_spin(false)
+	_size_w.value_changed.connect(func(_v: float) -> void: _on_size_field_changed())
+	_size_h.value_changed.connect(func(_v: float) -> void: _on_size_field_changed())
+	_size_row = _make_field_row("Size", [_labeled("W", _size_w), _labeled("H", _size_h)])
+	vbox.add_child(_size_row)
+
+	_color_btn = ColorPickerButton.new()
+	_color_btn.custom_minimum_size = Vector2(0, 28)
+	_color_btn.color_changed.connect(func(c: Color) -> void: _on_color_field_changed(c))
+	_color_row = _make_field_row("Colour", [_color_btn])
+	vbox.add_child(_color_row)
+
+	return panel
+
+
+## A numeric field. `allow_negative` widens the range for position coordinates;
+## size fields are floored at the editor's minimum rectangle extent.
+func _make_spin(allow_negative: bool) -> SpinBox:
+	var spin := SpinBox.new()
+	spin.step = 1.0
+	spin.allow_greater = true
+	spin.max_value = 100000.0
+	if allow_negative:
+		spin.allow_lesser = true
+		spin.min_value = -100000.0
+	else:
+		spin.min_value = ArenaEditTools.MIN_RECT_SIZE.x
+	spin.custom_minimum_size = Vector2(64, 0)
+	return spin
+
+
+func _labeled(text: String, control: Control) -> Control:
+	var row := HBoxContainer.new()
+	var label := Label.new()
+	label.text = text
+	label.custom_minimum_size = Vector2(16, 0)
+	row.add_child(label)
+	control.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(control)
+	return row
+
+
+func _make_field_row(title: String, children: Array) -> Control:
+	var box := VBoxContainer.new()
+	var label := Label.new()
+	label.text = title
+	label.modulate = Color(1, 1, 1, 0.7)
+	box.add_child(label)
+	for child in children:
+		box.add_child(child)
+	return box
+
+
+func _on_selection_changed(kind: int, index: int) -> void:
+	_refresh_inspector(kind, index)
+
+
+## Repopulate the inspector for the given selection, showing only the fields the
+## element actually has. `_refreshing` suppresses the echo from setting widgets.
+func _refresh_inspector(kind: int, index: int) -> void:
+	_refreshing = true
+	if kind == ArenaEditTools.Kind.NONE or index < 0:
+		_inspector_type.text = "No selection"
+		_pos_row.visible = false
+		_size_row.visible = false
+		_color_row.visible = false
+	else:
+		_inspector_type.text = _kind_label(kind)
+		var pos: Vector2 = ArenaEditTools.element_position(_canvas.arena, kind, index)
+		_pos_x.value = pos.x
+		_pos_y.value = pos.y
+		_pos_row.visible = true
+
+		_size_row.visible = ArenaEditTools.has_size(kind)
+		if _size_row.visible:
+			var sz: Vector2 = ArenaEditTools.element_size(_canvas.arena, kind, index)
+			_size_w.value = sz.x
+			_size_h.value = sz.y
+
+		_color_row.visible = ArenaEditTools.has_color(kind)
+		if _color_row.visible:
+			_color_btn.color = ArenaEditTools.element_color(_canvas.arena, kind, index)
+	_refreshing = false
+
+
+func _on_position_field_changed() -> void:
+	if _refreshing:
+		return
+	_canvas.set_selected_position(Vector2(_pos_x.value, _pos_y.value))
+
+
+func _on_size_field_changed() -> void:
+	if _refreshing:
+		return
+	_canvas.set_selected_size(Vector2(_size_w.value, _size_h.value))
+
+
+func _on_color_field_changed(color: Color) -> void:
+	if _refreshing:
+		return
+	_canvas.set_selected_color(color)
+
+
+func _kind_label(kind: int) -> String:
+	match kind:
+		ArenaEditTools.Kind.PLATFORM: return "Platform"
+		ArenaEditTools.Kind.SPAWN: return "Spawn point"
+		ArenaEditTools.Kind.KILL_ZONE: return "Kill zone"
+	return "Selection"
 
 
 func _new_arena() -> void:

@@ -15,6 +15,11 @@ class_name ArenaEditorCanvas
 ## so the editor can update its status line / dirty state.
 signal arena_modified
 
+## Emitted whenever the current selection changes (`kind`, `index`), so the
+## editor's property inspector can show/refresh the selected element's fields.
+## `kind` is `ArenaEditTools.Kind.NONE` (with `index` -1) when nothing is selected.
+signal selection_changed(kind: int, index: int)
+
 ## World-space spacing of the background grid, in pixels-at-zoom-1.
 const GRID_SPACING: float = 64.0
 ## Above this many grid lines on screen the grid is skipped (too dense to read).
@@ -105,6 +110,38 @@ func delete_selected() -> bool:
 	if _gesture_before.is_empty():
 		history.push_if_changed(before, arena.to_dict())
 	_clear_selection()
+	arena_modified.emit()
+	queue_redraw()
+	return true
+
+
+## Set the selected element's centre position from the inspector. Records one
+## undo step when the value actually changes. Returns true when applied.
+func set_selected_position(position: Vector2) -> bool:
+	return _apply_inspector_edit(ArenaEditTools.set_element_position.bind(arena, sel_kind, sel_index, position))
+
+
+## Set the selected element's size from the inspector (clamped to the minimum).
+func set_selected_size(size: Vector2) -> bool:
+	return _apply_inspector_edit(ArenaEditTools.set_element_size.bind(arena, sel_kind, sel_index, size))
+
+
+## Set the selected element's colour from the inspector.
+func set_selected_color(color: Color) -> bool:
+	return _apply_inspector_edit(ArenaEditTools.set_element_color.bind(arena, sel_kind, sel_index, color))
+
+
+## Apply a bound `ArenaEditTools.set_element_*` call as a single undoable edit:
+## snapshot, mutate, and commit through the history seam (#79) when the snapshot
+## actually changed. Returns the underlying setter's "was applicable" result.
+func _apply_inspector_edit(setter: Callable) -> bool:
+	var before := arena.to_dict()
+	if not setter.call():
+		return false
+	# Inside an open press→release gesture the gesture-end commit captures this
+	# already; pushing here too would record a duplicate step (cf. delete_selected).
+	if _gesture_before.is_empty():
+		history.push_if_changed(before, arena.to_dict())
 	arena_modified.emit()
 	queue_redraw()
 	return true
@@ -311,13 +348,19 @@ func _commit_drawn_rect(world: Vector2, screen: Vector2) -> void:
 # --- Selection helpers ------------------------------------------------------
 
 func _select(kind: int, index: int) -> void:
+	if kind == sel_kind and index == sel_index:
+		return
 	sel_kind = kind
 	sel_index = index
+	selection_changed.emit(sel_kind, sel_index)
 
 
 func _clear_selection() -> void:
+	if sel_kind == ArenaEditTools.Kind.NONE and sel_index == -1:
+		return
 	sel_kind = ArenaEditTools.Kind.NONE
 	sel_index = -1
+	selection_changed.emit(sel_kind, sel_index)
 
 
 func _cancel_drag() -> void:

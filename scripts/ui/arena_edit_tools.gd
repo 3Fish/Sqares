@@ -130,3 +130,95 @@ static func _opposite(handle: int) -> int:
 		Handle.BOTTOM_LEFT: return Handle.TOP_RIGHT
 		Handle.BOTTOM_RIGHT: return Handle.TOP_LEFT
 	return Handle.NONE
+
+
+# --- Per-element property inspector (#72) -----------------------------------
+## Numeric read/write helpers backing the editor's inspector panel. The panel
+## widgets are scene/UI concerns, but which fields an element exposes and how a
+## typed value lands in `ArenaData` is plain data logic, so it lives here and is
+## unit-tested directly (mirroring the placement maths above).
+
+## Does an element of `kind` carry a resizable `size`? (Spawns are points.)
+static func has_size(kind: int) -> bool:
+	return kind == Kind.PLATFORM or kind == Kind.KILL_ZONE
+
+
+## Does an element of `kind` carry an editable `color`? (Only platforms do.)
+static func has_color(kind: int) -> bool:
+	return kind == Kind.PLATFORM
+
+
+## Is `index` a valid element of `kind` in `arena`?
+static func element_exists(arena: ArenaData, kind: int, index: int) -> bool:
+	if arena == null or index < 0:
+		return false
+	match kind:
+		Kind.PLATFORM: return index < arena.platforms.size()
+		Kind.SPAWN: return index < arena.spawn_points.size()
+		Kind.KILL_ZONE: return index < arena.kill_zones.size()
+	return false
+
+
+## Centre position of the selected element, or ZERO when the selection is invalid.
+static func element_position(arena: ArenaData, kind: int, index: int) -> Vector2:
+	if not element_exists(arena, kind, index):
+		return Vector2.ZERO
+	match kind:
+		Kind.PLATFORM: return arena.platforms[index].get("position", Vector2.ZERO)
+		Kind.KILL_ZONE: return arena.kill_zones[index].get("position", Vector2.ZERO)
+		Kind.SPAWN: return arena.spawn_points[index]
+	return Vector2.ZERO
+
+
+## Full size of the selected element, or ZERO when it has none / is invalid.
+static func element_size(arena: ArenaData, kind: int, index: int) -> Vector2:
+	if not element_exists(arena, kind, index):
+		return Vector2.ZERO
+	match kind:
+		Kind.PLATFORM: return arena.platforms[index].get("size", Vector2.ZERO)
+		Kind.KILL_ZONE: return arena.kill_zones[index].get("size", Vector2.ZERO)
+	return Vector2.ZERO
+
+
+## Colour of the selected element, or WHITE when it has none / is invalid.
+static func element_color(arena: ArenaData, kind: int, index: int) -> Color:
+	if not element_exists(arena, kind, index):
+		return Color.WHITE
+	if kind == Kind.PLATFORM:
+		return arena.platforms[index].get("color", Color.WHITE)
+	return Color.WHITE
+
+
+## Set the selected element's centre position. Returns true when applied.
+static func set_element_position(arena: ArenaData, kind: int, index: int, position: Vector2) -> bool:
+	if not element_exists(arena, kind, index):
+		return false
+	match kind:
+		Kind.PLATFORM: arena.platforms[index]["position"] = position
+		Kind.KILL_ZONE: arena.kill_zones[index]["position"] = position
+		Kind.SPAWN: arena.spawn_points[index] = position
+		_: return false
+	return true
+
+
+## Set the selected element's size, clamped to `MIN_RECT_SIZE` so the inspector
+## can never produce a 0/negative rectangle (matching the drag/resize paths).
+## Returns true when applied (false for sizeless elements / invalid selections).
+static func set_element_size(arena: ArenaData, kind: int, index: int, size: Vector2) -> bool:
+	if not element_exists(arena, kind, index) or not has_size(kind):
+		return false
+	var clamped := size.max(MIN_RECT_SIZE)
+	match kind:
+		Kind.PLATFORM: arena.platforms[index]["size"] = clamped
+		Kind.KILL_ZONE: arena.kill_zones[index]["size"] = clamped
+		_: return false
+	return true
+
+
+## Set the selected element's colour. Returns true when applied (false for
+## colourless elements / invalid selections).
+static func set_element_color(arena: ArenaData, kind: int, index: int, color: Color) -> bool:
+	if not element_exists(arena, kind, index) or not has_color(kind):
+		return false
+	arena.platforms[index]["color"] = color
+	return true
