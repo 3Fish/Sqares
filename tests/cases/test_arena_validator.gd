@@ -111,6 +111,49 @@ func _test_spawn_inside_platform_is_warning_not_error() -> void:
 	assert_true(_messages(issues).contains("may be stuck"), "warns about being stuck")
 
 
+func _test_overlapping_platforms_is_warning_not_error() -> void:
+	var a := _valid_arena()
+	# Second platform interpenetrates the baseline platform at (0, 100).
+	a.add_platform(Vector2(50, 100), Vector2(400, 32))
+	var issues := ArenaValidator.validate(a)
+	assert_false(ArenaValidator.has_errors(issues), "overlapping platforms is not an error")
+	assert_true(_messages(issues).contains("overlap"), "warns that platforms overlap")
+
+
+func _test_flush_adjacent_platforms_do_not_warn() -> void:
+	# Two platforms butted edge-to-edge share only a border: a legitimate
+	# compound-shape technique that must NOT be flagged (include_borders = false).
+	var a := ArenaData.new()
+	a.add_platform(Vector2(-200, 100), Vector2(400, 32))  # spans x [-400, 0]
+	a.add_platform(Vector2(200, 100), Vector2(400, 32))   # spans x [0, 400]
+	a.add_kill_zone(Vector2(0, 600), Vector2(2000, 64))
+	a.add_spawn_point(Vector2(-100, 0))
+	a.add_spawn_point(Vector2(100, 0))
+	var issues := ArenaValidator.validate(a)
+	assert_false(_messages(issues).contains("overlap"), "flush-adjacent platforms are not flagged")
+
+
+func _test_non_overlapping_platforms_do_not_warn() -> void:
+	var a := _valid_arena()
+	a.add_platform(Vector2(1000, 100), Vector2(64, 32))  # far away from the baseline platform
+	var issues := ArenaValidator.validate(a)
+	assert_false(_messages(issues).contains("overlap"), "separated platforms are not flagged")
+
+
+func _test_stacked_spawns_is_warning_not_error() -> void:
+	var a := _valid_arena()
+	a.add_spawn_point(Vector2(-100, 0))  # coincident with the baseline spawn at (-100, 0)
+	var issues := ArenaValidator.validate(a)
+	assert_false(ArenaValidator.has_errors(issues), "stacked spawns is not an error")
+	assert_true(_messages(issues).contains("stacked"), "warns that spawns are stacked")
+
+
+func _test_distinct_spawns_do_not_warn_about_stacking() -> void:
+	# The baseline's two spawns sit at different positions.
+	var issues := ArenaValidator.validate(_valid_arena())
+	assert_false(_messages(issues).contains("stacked"), "distinct spawns are not flagged as stacked")
+
+
 func _test_count_and_summary_helpers() -> void:
 	# 0 spawns (error) + no platforms (error) + no kill zones (warning).
 	var a := ArenaData.new()
