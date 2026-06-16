@@ -11,9 +11,11 @@ extends TestCase
 
 
 func before_each() -> void:
-	# Register a stream for every cue so play() hits the real playback path
-	# instead of the "sound not registered" warning branch.
+	# Register a stream for every cue so play()/play_ui() hit the real playback
+	# path instead of the "sound not registered" warning branch.
 	for cue: String in SfxDirector.ALL_CUES:
+		AudioManager.register_sound(cue, AudioStreamGenerator.new())
+	for cue: String in SfxDirector.ALL_UI_CUES:
 		AudioManager.register_sound(cue, AudioStreamGenerator.new())
 
 
@@ -60,3 +62,43 @@ func _test_round_ended_handler_plays_end_stinger() -> void:
 func _test_match_ended_handler_plays_win_stinger() -> void:
 	SfxDirector._on_match_ended(0)
 	assert_eq(SfxDirector.last_cue(), SfxDirector.MATCH_WIN, "match_ended → match-win stinger")
+
+
+# --- UI cues (#58) ---------------------------------------------------------
+
+func _test_ui_cues_distinct_and_non_empty() -> void:
+	var seen: Dictionary = {}
+	for cue: String in SfxDirector.ALL_UI_CUES:
+		assert_false(cue.is_empty(), "ui cue name is non-empty")
+		assert_false(seen.has(cue), "ui cue name '%s' is unique" % cue)
+		seen[cue] = true
+	assert_eq(SfxDirector.ALL_UI_CUES.size(), seen.size(), "no duplicate ui cue names")
+
+
+func _test_ui_and_sfx_cue_names_are_disjoint() -> void:
+	# UI cues play on a different bus, so their names must not collide with the
+	# SFX cues (a shared name would let one bus's volume affect the other's cue).
+	for cue: String in SfxDirector.ALL_UI_CUES:
+		assert_false(SfxDirector.ALL_CUES.has(cue), "ui cue '%s' is not also an SFX cue" % cue)
+
+
+func _test_play_ui_records_and_returns_cue() -> void:
+	var played := SfxDirector.play_ui(SfxDirector.CARD_DRAW)
+	assert_eq(played, SfxDirector.CARD_DRAW, "play_ui returns the requested cue")
+	assert_eq(SfxDirector.last_ui_cue(), SfxDirector.CARD_DRAW, "play_ui records the last ui cue")
+
+
+func _test_play_ui_empty_is_noop() -> void:
+	SfxDirector.play_ui(SfxDirector.CARD_PICK)  # establish a known prior ui cue
+	var played := SfxDirector.play_ui("")
+	assert_eq(played, "", "empty ui cue is a no-op and returns empty")
+	assert_eq(SfxDirector.last_ui_cue(), SfxDirector.CARD_PICK, "empty ui cue leaves the last ui cue untouched")
+
+
+func _test_play_and_play_ui_track_independently() -> void:
+	# The SFX and UI "last cue" seams must not bleed into each other so each bus
+	# can be introspected on its own.
+	SfxDirector.play(SfxDirector.SHOOT)
+	SfxDirector.play_ui(SfxDirector.CARD_DRAW)
+	assert_eq(SfxDirector.last_cue(), SfxDirector.SHOOT, "play_ui does not disturb the last SFX cue")
+	assert_eq(SfxDirector.last_ui_cue(), SfxDirector.CARD_DRAW, "play does not disturb the last UI cue")
