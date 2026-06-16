@@ -84,6 +84,11 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	if _dead:
 		return
+	if not GameManager.is_gameplay_active(GameManager.state):
+		# Between/after rounds (the "wins the round" message, the card-selection
+		# overlay, the victory screen) combatants are frozen so the surviving
+		# player can't keep moving while losers pick cards (#70).
+		return
 	match net_role:
 		NetRole.LOCAL:
 			_step(_sample_input(), delta)

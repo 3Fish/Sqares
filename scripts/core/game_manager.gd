@@ -99,6 +99,17 @@ func wins_for_player(player_id: int) -> int:
 	return win_counts.get(team_for(player_id), 0)
 
 
+## True only while a round is actively in progress: the pre-fight "Round N"
+## intro (where players already position themselves today) and the fight itself.
+## Every between/after-round state — the "wins the round" message (ROUND_END),
+## the card-selection overlay (CARD_SELECTION), the victory screen (MATCH_END) —
+## and the menu return false, so combatants freeze and the surviving player can
+## no longer keep moving while losers pick cards (#70, deferred from #17).
+## Static + pure so the state-to-simulation rule is unit-tested without a match.
+static func is_gameplay_active(s: State) -> bool:
+	return s == State.ROUND_INTRO or s == State.ROUND
+
+
 ## Distinct team ids that still have at least one living player, given a list of
 ## alive player ids and a player_id -> team_id map. The round is over when this
 ## drops to one team (or zero, a draw). Static + pure for easy testing.
