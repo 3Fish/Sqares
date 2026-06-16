@@ -16,6 +16,12 @@ const MAX_FALL_SPEED := 900.0
 ## Max position error, in pixels, tolerated between this client's prediction
 ## and the host's authoritative state before rewinding + replaying (#27).
 const RECONCILE_TOLERANCE := 8.0
+## How far behind the newest received snapshot a PUPPET is rendered, in seconds
+## (#28). One render delay of buffer means there is almost always a future
+## sample to interpolate toward, so motion stays continuous instead of stepping
+## at the ~30 Hz net tick. ~2 net ticks; a feel constant — PUPPETs are
+## display-only, so this never affects host-authoritative outcomes.
+const PUPPET_INTERP_DELAY := 0.1
 
 ## Who drives this player's simulation (#27):
 ## - LOCAL: samples this machine's input and simulates authoritatively
@@ -43,6 +49,9 @@ var gravity_scale: float
 
 ## Client-side prediction history for reconciliation (#27).
 var prediction := NetPrediction.new()
+## Client-side snapshot buffer for smoothing a PUPPET's motion (#28). Fed by
+## NetReplicator on each snapshot; sampled in the PUPPET physics step.
+var interpolation := NetInterpolation.new()
 
 var _base_gravity: float
 var _coyote_timer: float = 0.0
@@ -75,6 +84,11 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	if _dead:
 		return
+	if not GameManager.is_gameplay_active(GameManager.state):
+		# Between/after rounds (the "wins the round" message, the card-selection
+		# overlay, the victory screen) combatants are frozen so the surviving
+		# player can't keep moving while losers pick cards (#70).
+		return
 	match net_role:
 		NetRole.LOCAL:
 			_step(_sample_input(), delta)
@@ -93,7 +107,9 @@ func _physics_process(delta: float) -> void:
 			_last_net_input = input
 			_step(input, delta)
 		NetRole.PUPPET:
-			pass  # state arrives via snapshots (NetReplicator)
+			# State arrives via snapshots (NetReplicator pushes them into the
+			# buffer); render a smoothed point slightly behind live (#28).
+			_apply_interpolation()
 
 
 # ---------------------------------------------------------------------------
@@ -269,6 +285,20 @@ func reconcile(auth: NetPlayerState) -> void:
 		entry["velocity"] = velocity
 
 
+## Renders this PUPPET at a smoothed, slightly-delayed position interpolated
+## between buffered snapshots (#28). Health is not interpolated — it is adopted
+## outright when each snapshot lands (NetReplicator). Before the buffer holds a
+## usable sample (the first packet of a round), nothing is applied and the node
+## keeps its spawn position.
+func _apply_interpolation() -> void:
+	var render_time := NetReplicator.net_time_seconds() - PUPPET_INTERP_DELAY
+	var state := interpolation.sample(render_time)
+	if state.is_empty():
+		return
+	global_position = state["position"]
+	velocity = state["velocity"]
+
+
 func _on_damaged(amount: float, attacker: Node) -> void:
 	# Forwards damage this player actually took to the effect engine so the
 	# victim's defensive / retaliation effects (`on_take_damage`) fire. Fed by
@@ -291,6 +321,9 @@ func respawn(spawn_position: Vector2) -> void:
 	global_position = spawn_position
 	velocity = Vector2.ZERO
 	health.reset()
+	# Drop any snapshot samples from the previous round so a freshly spawned
+	# PUPPET doesn't interpolate toward stale positions (#28).
+	interpolation.clear()
 	set_physics_process(true)
 	if not is_in_group(Projectile.TARGET_GROUP):
 		add_to_group(Projectile.TARGET_GROUP)

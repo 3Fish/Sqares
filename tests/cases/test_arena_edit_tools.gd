@@ -186,3 +186,35 @@ func _test_set_element_color_only_on_platforms() -> void:
 	assert_true(Tools.set_element_color(a, Tools.Kind.PLATFORM, 0, Color.RED), "applied")
 	assert_eq(a.platforms[0]["color"], Color.RED, "platform recoloured")
 	assert_false(Tools.set_element_color(a, Tools.Kind.KILL_ZONE, 0, Color.RED), "kill zone has no colour")
+
+
+# --- selection validation (#79) ---------------------------------------------
+
+func _test_selection_exists_validates_platform_index() -> void:
+	var a := ArenaDataScript.new().add_platform(Vector2.ZERO, Vector2(32, 32))
+	assert_true(Tools.selection_exists(a, Tools.Kind.PLATFORM, 0), "in-range platform")
+	assert_false(Tools.selection_exists(a, Tools.Kind.PLATFORM, 1), "out-of-range platform")
+	assert_false(Tools.selection_exists(a, Tools.Kind.PLATFORM, -1), "negative index")
+
+
+func _test_selection_exists_validates_spawn_and_kill_zone() -> void:
+	var a := ArenaDataScript.new()
+	a.add_spawn_point(Vector2(10, 10))
+	a.add_kill_zone(Vector2.ZERO, Vector2(64, 16))
+	assert_true(Tools.selection_exists(a, Tools.Kind.SPAWN, 0), "spawn 0 exists")
+	assert_true(Tools.selection_exists(a, Tools.Kind.KILL_ZONE, 0), "kill zone 0 exists")
+	assert_false(Tools.selection_exists(a, Tools.Kind.SPAWN, 1), "no spawn 1")
+	assert_false(Tools.selection_exists(a, Tools.Kind.KILL_ZONE, 1), "no kill zone 1")
+
+
+func _test_selection_exists_rejects_none_kind_and_null_arena() -> void:
+	var a := ArenaDataScript.new().add_platform(Vector2.ZERO, Vector2(32, 32))
+	assert_false(Tools.selection_exists(a, Tools.Kind.NONE, 0), "NONE kind is not a selection")
+	assert_false(Tools.selection_exists(null, Tools.Kind.PLATFORM, 0), "null arena is never selectable")
+
+
+func _test_selection_exists_false_after_element_removed() -> void:
+	var a := ArenaDataScript.new().add_platform(Vector2.ZERO, Vector2(32, 32))
+	assert_true(Tools.selection_exists(a, Tools.Kind.PLATFORM, 0), "exists before removal")
+	a.remove_platform(0)
+	assert_false(Tools.selection_exists(a, Tools.Kind.PLATFORM, 0), "index gone after removal")

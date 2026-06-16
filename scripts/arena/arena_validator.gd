@@ -20,6 +20,10 @@ class_name ArenaValidator
 ## Full pathfinding-based reachability is intentionally out of scope (see the PR's
 ## deferred notes); these structural checks catch the arenas that actually break a
 ## match.
+##
+## A lightweight **overlap / self-intersection** sanity pass (`_check_overlaps`,
+## #74) flags layouts that are buildable but questionable rather than
+## match-breaking — overlapping platforms and stacked spawn points — as WARNINGs.
 
 enum Severity { WARNING, ERROR }
 
@@ -42,6 +46,7 @@ static func validate(data: ArenaData) -> Array[Dictionary]:
 	_check_geometry(data, issues)
 	_check_bounds(data, issues)
 	_check_spawn_placement(data, issues)
+	_check_overlaps(data, issues)
 	return issues
 
 
@@ -124,6 +129,31 @@ static func _check_spawn_placement(data: ArenaData, issues: Array[Dictionary]) -
 			_add(issues, Severity.WARNING, "Spawn point %d is inside a platform (player may be stuck)." % i)
 
 
+## Overlap / self-intersection sanity pass (#74): buildable-but-questionable
+## layouts, surfaced as advisory WARNINGs (they never block playtest).
+##
+## - Overlapping platforms: two platform rectangles that genuinely interpenetrate.
+##   Edge-sharing (flush) layouts only touch on a border, so `intersects` is called
+##   with `include_borders = false` and the common compound-shape technique of
+##   butting platforms together is NOT flagged.
+## - Stacked spawns: two spawn points at the same position would spawn players on
+##   top of one another. Coincidence (`is_equal_approx`) is used rather than a
+##   player-size proximity radius so the arena layer stays decoupled from the
+##   match/player layer (mirroring the `MIN_SPAWN_POINTS` rationale above).
+static func _check_overlaps(data: ArenaData, issues: Array[Dictionary]) -> void:
+	for i in data.platforms.size():
+		var rect_i := _rect_of(data.platforms[i])
+		for j in range(i + 1, data.platforms.size()):
+			if rect_i.intersects(_rect_of(data.platforms[j]), false):
+				_add(issues, Severity.WARNING, "Platforms %d and %d overlap." % [i, j])
+	for i in data.spawn_points.size():
+		var sp: Vector2 = data.spawn_points[i]
+		for j in range(i + 1, data.spawn_points.size()):
+			if sp.is_equal_approx(data.spawn_points[j]):
+				_add(issues, Severity.WARNING,
+					"Spawn points %d and %d are stacked at the same position." % [i, j])
+
+
 # --- Internal helpers -------------------------------------------------------
 
 static func _add(issues: Array[Dictionary], severity: Severity, message: String) -> void:
@@ -144,3 +174,12 @@ static func _point_in_any(rects: Array, point: Vector2) -> bool:
 		if Rect2(center - size * 0.5, size).has_point(point):
 			return true
 	return false
+
+
+## Build the axis-aligned [Rect2] for a centre+size entry. `abs()` normalises any
+## negative-size (degenerate) entry so the intersection test is well-defined; such
+## entries are already flagged as errors by `_check_geometry`.
+static func _rect_of(entry: Dictionary) -> Rect2:
+	var center: Vector2 = entry.get("position", Vector2.ZERO)
+	var size: Vector2 = entry.get("size", Vector2.ZERO)
+	return Rect2(center - size * 0.5, size).abs()

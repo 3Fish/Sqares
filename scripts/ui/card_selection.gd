@@ -62,6 +62,10 @@ func begin(hands: Dictionary) -> void:
 		if (_panels[pid]["hand"] as Array).is_empty():
 			_panels[pid]["confirmed"] = true
 	_refresh_all()
+	# Play the card-draw UI cue once the hands are on screen, but only when there
+	# is actually something to pick — an empty round completes silently (#58).
+	if has_drawable_cards(hands):
+		SfxDirector.play_ui(SfxDirector.CARD_DRAW)
 	_maybe_complete.call_deferred()
 
 
@@ -81,9 +85,18 @@ func _process(_delta: float) -> void:
 			panel["index"] = wrap_index(panel["index"], 1, hand.size())
 			_refresh_panel(pid)
 		elif Input.is_action_just_pressed("p%d_jump" % n):
-			panel["confirmed"] = true
-			_refresh_panel(pid)
-			_maybe_complete()
+			_confirm(pid)
+
+
+## Locks in the highlighted card for one player: marks the panel confirmed, plays
+## the card-pick UI cue (#58), repaints the panel, and settles the screen if every
+## panel is now done. Empty hands are auto-confirmed in `begin()` and never route
+## here, so a pick cue always corresponds to a real card choice.
+func _confirm(player_id: int) -> void:
+	_panels[player_id]["confirmed"] = true
+	SfxDirector.play_ui(SfxDirector.CARD_PICK)
+	_refresh_panel(player_id)
+	_maybe_complete()
 
 
 func _maybe_complete() -> void:
@@ -197,3 +210,13 @@ static func wrap_index(current: int, delta: int, size: int) -> int:
 	if size <= 0:
 		return 0
 	return posmod(current + delta, size)
+
+
+## True when at least one player was dealt a non-empty hand, i.e. there is a card
+## to actually pick. Gates the card-draw UI cue (#58) so a round with no losers or
+## no registered cards — which completes immediately — stays silent.
+static func has_drawable_cards(hands: Dictionary) -> bool:
+	for pid in hands:
+		if hands[pid] is Array and not (hands[pid] as Array).is_empty():
+			return true
+	return false

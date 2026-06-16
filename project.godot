@@ -20,6 +20,7 @@ config/icon="res://icon.svg"
 [autoload]
 
 GameManager="*res://scripts/core/game_manager.gd"
+DisplaySettings="*res://scripts/core/display_settings.gd"
 ModLoader="*res://scripts/mods/mod_loader.gd"
 StatRegistry="*res://scripts/mods/stat_registry.gd"
 CardRegistry="*res://scripts/mods/card_registry.gd"
@@ -40,6 +41,7 @@ NetReplicator="*res://scripts/multiplayer/net_replicator.gd"
 window/size/viewport_width=1280
 window/size/viewport_height=720
 window/stretch/mode="canvas_items"
+window/stretch/aspect="keep"
 
 [editor]
 

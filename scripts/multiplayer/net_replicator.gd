@@ -194,7 +194,13 @@ func _client_receive_snapshot(data: Dictionary) -> void:
 		if player.net_role == Player.NetRole.PREDICTED:
 			player.reconcile(state)
 		else:
-			state.apply_to(player)
+			# PUPPET: adopt authoritative health immediately, but buffer the
+			# transform so the physics step can render a smoothed, slightly
+			# delayed point between snapshots instead of stepping at the net
+			# tick rate (#28). Stamped with local receive time so interpolation
+			# needs no host-clock sync.
+			player.health.current_hp = state.health
+			player.interpolation.push(net_time_seconds(), state.position, state.velocity)
 
 
 # ---------------------------------------------------------------------------
@@ -309,6 +315,14 @@ func _client_reject_projectile(net_id: String) -> void:
 ## Globally unique client-generated projectile id: peer id + local counter.
 static func make_projectile_id(peer_id: int, counter: int) -> String:
 	return "%d_%d" % [peer_id, counter]
+
+
+## Monotonic local clock (seconds) shared by the PUPPET interpolation path
+## (#28): snapshots are stamped with it on receive, and the physics step renders
+## `PUPPET_INTERP_DELAY` behind it. One source of truth keeps the receive
+## timestamps and the render time on the same time base.
+static func net_time_seconds() -> float:
+	return Time.get_ticks_msec() / 1000.0
 
 
 # ---------------------------------------------------------------------------
