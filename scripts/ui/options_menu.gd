@@ -36,6 +36,8 @@ func _ready() -> void:
 	for bus: String in AudioManager.MANAGED_BUSES:
 		_add_volume_row(vbox, bus)
 
+	_add_fullscreen_row(vbox)
+
 	var back := Button.new()
 	back.text = "Back"
 	back.pressed.connect(_on_back_pressed)
@@ -66,6 +68,18 @@ func _add_volume_row(parent: Node, bus: String) -> void:
 	label.text = "%s  %d%%" % [name_text, roundi(slider.value * 100.0)]
 
 
+func _add_fullscreen_row(parent: Node) -> void:
+	var toggle := CheckButton.new()
+	toggle.text = "Fullscreen"
+	toggle.button_pressed = DisplaySettings.is_fullscreen()
+	toggle.toggled.connect(
+		func(on: bool) -> void:
+			DisplaySettings.set_fullscreen(on)
+	)
+	parent.add_child(toggle)
+
+
 func _on_back_pressed() -> void:
 	AudioManager.save_settings()
+	DisplaySettings.save_settings()
 	get_tree().change_scene_to_file(MAIN_MENU_SCENE)
