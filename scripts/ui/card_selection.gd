@@ -31,12 +31,20 @@ signal selection_complete(picks: Dictionary)
 #               "cards_box": VBoxContainer, "status": Label }
 var _panels: Dictionary = {}
 var _done: bool = false
+## player_id -> input index whose `p{n+1}_*` actions drive that panel. Defaults
+## to the player_id itself (local couch play). Online, a remote loser drives its
+## own panel through this machine's primary `p1` bindings (override -> 0),
+## mirroring `Player.input_id` for the local slot (#82).
+var _input_overrides: Dictionary = {}
 
 
 ## Builds the screen from `hands` ({ player_id: Array[Card] }) and starts
-## listening for input. With no players (or all hands empty) it completes on the
-## next frame so the round flow never stalls waiting on a pick that can't be made.
-func begin(hands: Dictionary) -> void:
+## listening for input. `input_overrides` ({ player_id -> input index }) remaps
+## which `p{n}_*` bindings drive a panel; an unlisted panel uses its own slot.
+## With no players (or all hands empty) it completes on the next frame so the
+## round flow never stalls waiting on a pick that can't be made.
+func begin(hands: Dictionary, input_overrides: Dictionary = {}) -> void:
+	_input_overrides = input_overrides
 	var dim := ColorRect.new()
 	dim.color = Color(0.0, 0.0, 0.0, 0.6)
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -77,7 +85,7 @@ func _process(_delta: float) -> void:
 		if panel["confirmed"]:
 			continue
 		var hand: Array = panel["hand"]
-		var n := (pid + 1)
+		var n: int = int(_input_overrides.get(pid, pid)) + 1
 		if Input.is_action_just_pressed("p%d_move_left" % n):
 			panel["index"] = wrap_index(panel["index"], -1, hand.size())
 			_refresh_panel(pid)

@@ -77,3 +77,22 @@ func _test_confirm_plays_pick_cue() -> void:
 	ui._confirm(0)
 	assert_eq(SfxDirector.last_ui_cue(), SfxDirector.CARD_PICK, "locking in a card plays the card-pick cue")
 	ui.queue_free()
+
+
+# --- online single-slot pick screen (#82) ----------------------------------
+
+func _test_begin_subset_slot_picks_correctly() -> void:
+	# Online each peer shows only its own losing slot, with input remapped to p1.
+	# The pick still resolves against that slot's hand regardless of the override.
+	var ui := CardSelectionUI.new()
+	runner.root.add_child(ui)
+	# A holder dict is mutated (not reassigned) so the lambda's capture sees it.
+	var holder: Dictionary = {"picks": {}}
+	ui.selection_complete.connect(func(p: Dictionary) -> void: holder["picks"] = p)
+	ui.begin({2: [_make_card("x"), _make_card("y")]}, {2: 0})
+	ui._confirm(2)
+	var captured: Dictionary = holder["picks"]
+	assert_true(captured.has(2), "completion reports the shown slot")
+	assert_eq(captured.size(), 1, "only the single shown panel is reported")
+	assert_eq(captured[2].id, "x", "the highlighted (first) card is the pick")
+	ui.queue_free()
