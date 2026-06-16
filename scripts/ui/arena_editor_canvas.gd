@@ -69,6 +69,9 @@ var _press_screen: Vector2 = Vector2.ZERO
 ## Snapshot taken when an edit gesture begins; committed as one undo step at
 ## gesture end if the gesture actually changed the arena.
 var _gesture_before: Dictionary = {}
+## Selection active when the gesture began, recorded alongside `_gesture_before`
+## so undo can restore the pre-edit selection (#79).
+var _gesture_before_sel: Dictionary = {}
 
 
 func _ready() -> void:
@@ -82,6 +85,7 @@ func set_arena(new_arena: ArenaData) -> void:
 	# History is per-document: replacing the arena (New / Load) resets it.
 	history.clear()
 	_gesture_before = {}
+	_gesture_before_sel = {}
 	queue_redraw()
 
 
@@ -95,6 +99,7 @@ func set_tool(new_tool: int) -> void:
 ## Delete the current selection, if any. Returns true when something was removed.
 func delete_selected() -> bool:
 	var before := arena.to_dict()
+	var before_sel := _current_selection()
 	match sel_kind:
 		ArenaEditTools.Kind.PLATFORM: arena.remove_platform(sel_index)
 		ArenaEditTools.Kind.SPAWN: arena.remove_spawn_point(sel_index)
@@ -103,7 +108,7 @@ func delete_selected() -> bool:
 	# Inside an open press→release gesture the commit at gesture end already
 	# captures this change; pushing here too would record a duplicate step.
 	if _gesture_before.is_empty():
-		history.push_if_changed(before, arena.to_dict())
+		history.push_if_changed(before, arena.to_dict(), before_sel)
 	_clear_selection()
 	arena_modified.emit()
 	queue_redraw()
@@ -114,25 +119,44 @@ func delete_selected() -> bool:
 func undo() -> bool:
 	if _drawing or _moving or _resizing:
 		return false
-	return _apply_history_state(history.undo(arena.to_dict()))
+	return _apply_history_state(history.undo(arena.to_dict(), _current_selection()))
 
 
 ## Re-apply the last undone edit. Returns true when a step was applied.
 func redo() -> bool:
 	if _drawing or _moving or _resizing:
 		return false
-	return _apply_history_state(history.redo(arena.to_dict()))
+	return _apply_history_state(history.redo(arena.to_dict(), _current_selection()))
 
 
 func _apply_history_state(state: Dictionary) -> bool:
 	if state.is_empty():
 		return false
 	arena = ArenaData.from_dict(state)
-	# Element indices may not exist in the restored state; safest is to clear.
-	_clear_selection()
+	# Restore the selection recorded with this step (#79). The element it points
+	# at may not exist in the restored state, so validate before reapplying and
+	# fall back to no selection otherwise.
+	_restore_selection(history.restored_selection)
 	arena_modified.emit()
 	queue_redraw()
 	return true
+
+
+## The current selection as a `{ "kind", "index" }` dictionary, for recording
+## with an undo step.
+func _current_selection() -> Dictionary:
+	return {"kind": sel_kind, "index": sel_index}
+
+
+## Reapply a selection recorded on an undo step, dropping it when the element no
+## longer exists in the (just-restored) arena.
+func _restore_selection(sel: Dictionary) -> void:
+	var kind: int = sel.get("kind", ArenaEditTools.Kind.NONE)
+	var index: int = sel.get("index", -1)
+	if ArenaEditTools.selection_exists(arena, kind, index):
+		_select(kind, index)
+	else:
+		_clear_selection()
 
 
 ## Centre the view on the arena's content (or the origin when it's empty).
@@ -203,6 +227,7 @@ func _on_left_press(world: Vector2, screen: Vector2) -> void:
 	_press_screen = screen
 	# Snapshot for undo; committed at gesture end only if something changed.
 	_gesture_before = arena.to_dict()
+	_gesture_before_sel = _current_selection()
 	match tool:
 		ArenaEditTools.Tool.SPAWN:
 			arena.add_spawn_point(ArenaEditTools.snap(world))
@@ -335,8 +360,9 @@ func _cancel_drag() -> void:
 func _commit_gesture() -> void:
 	if _gesture_before.is_empty():
 		return
-	history.push_if_changed(_gesture_before, arena.to_dict())
+	history.push_if_changed(_gesture_before, arena.to_dict(), _gesture_before_sel)
 	_gesture_before = {}
+	_gesture_before_sel = {}
 
 
 ## Centre of the current selection, or ZERO when nothing valid is selected.

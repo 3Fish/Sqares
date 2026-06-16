@@ -29,6 +29,21 @@ const MIN_RECT_SIZE: Vector2 = Vector2(16, 16)
 const DEFAULT_RECT_SIZE: Vector2 = Vector2(128, 32)
 
 
+## Does the `kind`/`index` selection still refer to an existing element of
+## `arena`? Used after an undo/redo restore (#79) to decide whether the recorded
+## selection can be reapplied or must be dropped, since the element it pointed at
+## may not exist in the restored state. A `NONE` kind or out-of-range / negative
+## index is not a valid selection.
+static func selection_exists(arena: ArenaData, kind: int, index: int) -> bool:
+	if arena == null or index < 0:
+		return false
+	match kind:
+		Kind.PLATFORM: return index < arena.platforms.size()
+		Kind.SPAWN: return index < arena.spawn_points.size()
+		Kind.KILL_ZONE: return index < arena.kill_zones.size()
+	return false
+
+
 ## Snap a world point to the nearest grid intersection. A non-positive spacing
 ## disables snapping (returns the point unchanged).
 static func snap(point: Vector2, spacing: float = GRID_SNAP) -> Vector2:

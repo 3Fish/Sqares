@@ -94,3 +94,58 @@ func _test_clear_drops_both_stacks() -> void:
 	_history.clear()
 	assert_false(_history.can_undo(), "clear drops undo steps")
 	assert_false(_history.can_redo(), "clear drops redo steps")
+
+
+# --- selection paired with each step (#79) ----------------------------------
+
+func _sel(kind: int, index: int) -> Dictionary:
+	return {"kind": kind, "index": index}
+
+
+func _test_undo_restores_pre_edit_selection_and_redo_restores_edit_selection() -> void:
+	# Edit recorded the pre-edit state (1) with its selection; the live state (2)
+	# carries the selection that was current at the edit.
+	_history.push(_state(1), _sel(1, 7))
+	assert_eq(_history.undo(_state(2), _sel(2, 9)), _state(1), "undo returns the pre-edit state")
+	assert_eq(_history.restored_selection, _sel(1, 7), "undo restores the pre-edit selection")
+	assert_eq(_history.redo(_state(1), _sel(1, 7)), _state(2), "redo returns the undone state")
+	assert_eq(_history.restored_selection, _sel(2, 9), "redo restores the selection current at the edit")
+
+
+func _test_selection_defaults_to_empty_when_not_supplied() -> void:
+	# The existing callers/tests that pass no selection must still work; the
+	# restored selection is then empty (the caller clears the selection).
+	_history.push(_state(1))
+	_history.undo(_state(2))
+	assert_eq(_history.restored_selection, {}, "no recorded selection -> empty")
+
+
+func _test_failed_undo_redo_clears_restored_selection() -> void:
+	_history.push(_state(1), _sel(1, 1))
+	_history.undo(_state(2), _sel(2, 2))
+	assert_eq(_history.restored_selection, _sel(1, 1), "precondition: a selection was restored")
+	# Nothing left to undo: the stale selection must not linger.
+	assert_true(_history.undo(_state(1)).is_empty(), "no further undo")
+	assert_eq(_history.restored_selection, {}, "failed undo clears restored selection")
+
+
+func _test_clear_resets_restored_selection() -> void:
+	_history.push(_state(1), _sel(1, 0))
+	_history.undo(_state(2), _sel(2, 0))
+	_history.clear()
+	assert_eq(_history.restored_selection, {}, "clear resets restored selection")
+
+
+func _test_selection_stays_aligned_through_depth_cap() -> void:
+	# Selections are dropped in lockstep with their snapshots when the cap trims
+	# the oldest steps, so the surviving selection still matches its state.
+	var extra := 3
+	for i in EditorUndoHistory.MAX_STEPS + extra:
+		_history.push(_state(i), _sel(1, i))
+	var current := _state(EditorUndoHistory.MAX_STEPS + extra)
+	var current_sel := _sel(1, EditorUndoHistory.MAX_STEPS + extra)
+	while _history.can_undo():
+		current = _history.undo(current, current_sel)
+		current_sel = _history.restored_selection
+	assert_eq(current, _state(extra), "oldest kept state")
+	assert_eq(current_sel, _sel(1, extra), "its selection survived the cap drop alignment")
