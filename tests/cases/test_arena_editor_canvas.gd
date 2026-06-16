@@ -143,6 +143,75 @@ func _test_tool_switch_mid_drag_commits_the_applied_edit() -> void:
 	assert_eq(_canvas.arena.platforms[0]["position"], Vector2.ZERO, "undo restored the position")
 
 
+# --- property inspector edits (#72) -----------------------------------------
+
+func _test_set_selected_position_is_one_undoable_step() -> void:
+	var data := ArenaData.new().add_platform(Vector2.ZERO, Vector2(64, 64))
+	_canvas.set_arena(data)
+	_canvas._select(ArenaEditTools.Kind.PLATFORM, 0)
+	assert_true(_canvas.set_selected_position(Vector2(48, -16)), "edit applied")
+	assert_eq(_canvas.arena.platforms[0]["position"], Vector2(48, -16), "platform moved")
+	assert_true(_canvas.undo(), "inspector edit is undoable")
+	assert_eq(_canvas.arena.platforms[0]["position"], Vector2.ZERO, "undo restored position")
+	assert_false(_canvas.history.can_undo(), "one field edit = one step")
+
+
+func _test_set_selected_size_clamps_and_commits() -> void:
+	var data := ArenaData.new().add_kill_zone(Vector2.ZERO, Vector2(64, 64))
+	_canvas.set_arena(data)
+	_canvas._select(ArenaEditTools.Kind.KILL_ZONE, 0)
+	assert_true(_canvas.set_selected_size(Vector2(120, 4)), "edit applied")
+	# Height floored to the minimum rect extent.
+	assert_eq(_canvas.arena.kill_zones[0]["size"], Vector2(120, ArenaEditTools.MIN_RECT_SIZE.y), "size clamped")
+	assert_true(_canvas.undo(), "size edit is undoable")
+	assert_eq(_canvas.arena.kill_zones[0]["size"], Vector2(64, 64), "undo restored size")
+
+
+func _test_set_selected_color_only_affects_platforms() -> void:
+	var data := ArenaData.new().add_platform(Vector2.ZERO, Vector2(64, 64), Color.WHITE)
+	data.add_kill_zone(Vector2(200, 0), Vector2(32, 32))
+	_canvas.set_arena(data)
+	_canvas._select(ArenaEditTools.Kind.PLATFORM, 0)
+	assert_true(_canvas.set_selected_color(Color.RED), "platform recolour applied")
+	assert_eq(_canvas.arena.platforms[0]["color"], Color.RED, "platform colour changed")
+	# A kill zone has no colour field, so the edit is a no-op (and records nothing).
+	_canvas._select(ArenaEditTools.Kind.KILL_ZONE, 0)
+	assert_false(_canvas.set_selected_color(Color.BLUE), "kill zone has no colour")
+
+
+func _test_inspector_edit_with_no_selection_is_noop() -> void:
+	_canvas.set_arena(ArenaData.new().add_platform(Vector2.ZERO, Vector2(64, 64)))
+	_canvas._clear_selection()
+	assert_false(_canvas.set_selected_position(Vector2(10, 10)), "no selection -> no edit")
+	assert_false(_canvas.history.can_undo(), "nothing recorded")
+
+
+func _test_identical_inspector_value_records_no_step() -> void:
+	var data := ArenaData.new().add_platform(Vector2(32, 32), Vector2(64, 64))
+	_canvas.set_arena(data)
+	_canvas._select(ArenaEditTools.Kind.PLATFORM, 0)
+	# Re-applying the same position is "applicable" but changes nothing.
+	assert_true(_canvas.set_selected_position(Vector2(32, 32)), "setter reports applicable")
+	assert_false(_canvas.history.can_undo(), "no-op edit records no undo step")
+
+
+func _test_select_emits_selection_changed() -> void:
+	var data := ArenaData.new().add_platform(Vector2.ZERO, Vector2(64, 64))
+	_canvas.set_arena(data)
+	var seen: Array = []
+	_canvas.selection_changed.connect(func(kind: int, index: int) -> void: seen.append([kind, index]))
+	_canvas._select(ArenaEditTools.Kind.PLATFORM, 0)
+	assert_eq(seen.size(), 1, "one emission on a real selection change")
+	assert_eq(seen[0][0], ArenaEditTools.Kind.PLATFORM, "kind reported")
+	assert_eq(seen[0][1], 0, "index reported")
+	# Re-selecting the same element must not re-emit.
+	_canvas._select(ArenaEditTools.Kind.PLATFORM, 0)
+	assert_eq(seen.size(), 1, "no emission when selection is unchanged")
+	_canvas._clear_selection()
+	assert_eq(seen.size(), 2, "clearing a live selection emits NONE")
+	assert_eq(seen[1][0], ArenaEditTools.Kind.NONE, "cleared kind is NONE")
+
+
 # --- selection restore on undo/redo (#79) -----------------------------------
 
 func _test_redo_reselects_the_placed_element_and_undo_clears_it() -> void:
