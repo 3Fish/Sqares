@@ -46,6 +46,9 @@ var stats: PlayerStats
 var move_speed: float
 var jump_force: float
 var gravity_scale: float
+## Physics mass derived from the player's size stat (#96). Drives how hard this
+## player shoves physics blocks; players stay kinematic and never get shoved.
+var mass: float
 
 ## Client-side prediction history for reconciliation (#27).
 var prediction := NetPrediction.new()
@@ -129,6 +132,11 @@ func _step(input: NetPlayerInput, delta: float, replay: bool = false) -> void:
 	if not replay:
 		_handle_shoot(input)
 	move_and_slide()
+	if not replay:
+		# Shove any physics blocks (#96) this player drove into this tick.
+		# Skipped on reconciliation replay so an already-applied push isn't
+		# double-counted when a PREDICTED player rewinds and re-simulates.
+		_push_physics_bodies()
 
 
 ## Samples this machine's input for one tick. Each sample takes the next
@@ -205,6 +213,21 @@ func _is_wall_sliding(move_axis: float) -> bool:
 		return false
 	# True when the player is pressing into (not away from) the wall.
 	return sign(move_axis) == -sign(get_wall_normal().x)
+
+
+## Imparts a mass/velocity-scaled impulse into every physics block (#96) this
+## player collided with during the last `move_and_slide`. Players are kinematic
+## and only push: the block (a RigidBody2D) reacts, the player does not. The
+## push strength derives from the player's mass and the speed it drove into the
+## block (see PhysicsModel.push_impulse).
+func _push_physics_bodies() -> void:
+	for i in get_slide_collision_count():
+		var collision := get_slide_collision(i)
+		var collider := collision.get_collider()
+		if collider != null and collider.has_method("receive_push"):
+			var impulse := PhysicsModel.push_impulse(mass, velocity, collision.get_normal())
+			if impulse != Vector2.ZERO:
+				collider.receive_push(impulse)
 
 
 # ---------------------------------------------------------------------------
@@ -351,6 +374,7 @@ func _sync_stats(initialize_health: bool = false) -> void:
 	move_speed    = d.get("move_speed",    300.0)
 	jump_force    = d.get("jump_force",    550.0)
 	gravity_scale = d.get("gravity_scale", 1.0)
+	mass          = PhysicsModel.player_mass(d.get("player_size", 32.0))
 	if initialize_health:
 		health.initialize(d)
 	else:
