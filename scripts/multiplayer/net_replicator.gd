@@ -42,6 +42,13 @@ const MAX_REDUNDANT_INPUTS := 8
 ## client MatchDirector to mirror the host's round lifecycle.
 signal match_event(kind: String, data: Dictionary)
 
+## Reliable client→host card pick (#82): a remote loser replicates its
+## between-rounds choice back to the host, which gates the next round on every
+## loser's pick being in. Emitted on the host once a pick passes the
+## slot-ownership check; the host MatchDirector validates it against the hands it
+## broadcast and records it.
+signal card_pick_received(slot: int, card_id: String)
+
 ## Host physics tick counter driving the snapshot cadence.
 var _tick: int = 0
 ## Live player nodes in the current round: player_id -> Player.
@@ -338,6 +345,25 @@ func broadcast_match_event(kind: String, data: Dictionary = {}) -> void:
 @rpc("authority", "call_remote", "reliable")
 func _client_receive_match_event(kind: String, data: Dictionary) -> void:
 	match_event.emit(kind, data)
+
+
+## Client→host: replicates this peer's between-rounds card pick (#82). `card_id`
+## is empty when the loser had nothing to pick. No-op off a client.
+func send_card_pick(slot: int, card_id: String) -> void:
+	if not NetworkManager.is_client():
+		return
+	_host_receive_card_pick.rpc_id(NetworkManager.HOST_PEER_ID, slot, card_id)
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func _host_receive_card_pick(slot: int, card_id: String) -> void:
+	if not NetworkManager.is_host():
+		return
+	# Trust the lobby, not the payload: a peer may only pick for its own slot.
+	var sender_slot := NetworkManager.slot_of(multiplayer.get_remote_sender_id())
+	if sender_slot < 0 or sender_slot != int(slot):
+		return
+	card_pick_received.emit(slot, card_id)
 
 
 # ---------------------------------------------------------------------------

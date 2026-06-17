@@ -49,6 +49,10 @@ var _mode: GameMode = null
 ## accumulation intent, #43). player_id -> Array of effect objects.
 var _picked_effects: Dictionary = {}
 
+## Client-side card-pick screen shown between rounds when this peer's square lost
+## (#82). Tracked so it can be torn down on pick / next round start.
+var _card_ui: CardSelectionUI = null
+
 
 func _ready() -> void:
 	# Consume a one-shot playtest arena, if the editor handed one over (#36).
@@ -202,22 +206,23 @@ func _end_round() -> void:
 ## and picks one (#17). Returns immediately (no UI) when there is nothing to
 ## pick — no losers, or no cards registered — so the round flow never stalls.
 func _run_card_selection(loser_ids: Array) -> void:
-	# Online card selection (remote losers picking on their own screens, picks
-	# replicated back to the host) is not wired yet — see the Deferred
-	# follow-up from #27. Networked matches go straight to the next round.
-	if NetworkManager.is_networked():
-		return
 	var cards: Array = CardRegistry.get_all_cards()
 	if loser_ids.is_empty() or cards.is_empty():
 		return
 	GameManager.begin_card_selection()
 	_hud.hide_center()
 
+	# The host (and offline play) draws every loser's hand here so draws stay on
+	# the synced, per-round seeded RNG stream (#24). Online the host broadcasts
+	# these hands rather than having clients re-draw, which keeps picks robust
+	# against any per-peer RNG-stream divergence (#82).
 	var hands: Dictionary = {}
 	for pid in loser_ids:
-		# Drawing through RNGService keeps draws on the synced, per-round
-		# seeded stream (#24) — identical on every peer once picks go online.
 		hands[pid] = CardDraw.weighted_draw(cards, cards_per_draw, RNGService.generator())
+
+	if NetworkManager.is_networked():
+		await _run_networked_card_selection(loser_ids, hands)
+		return
 
 	var ui := CardSelectionUI.new()
 	add_child(ui)
@@ -225,6 +230,50 @@ func _run_card_selection(loser_ids: Array) -> void:
 	var picks: Dictionary = await ui.selection_complete
 	_record_picks(picks)
 	ui.queue_free()
+
+
+## Host-side online pick phase (#82): broadcasts each loser its hand, picks the
+## host's own square locally (if it lost), collects remote losers' picks over the
+## reliable client→host channel, and returns once every loser has chosen — which
+## gates the next `round_start`. Only the host reaches here (`_end_round` is
+## authority/offline-only); clients mirror via `_client_card_selection`.
+func _run_networked_card_selection(loser_ids: Array, hands: Dictionary) -> void:
+	var serialized := CardPickSync.serialize_hands(hands)
+	_broadcast("card_selection", {"hands": serialized})
+
+	var picks: Dictionary = {}  # slot -> Card (or null for an empty hand)
+	var local_slot := NetworkManager.local_slot()
+
+	var on_remote_pick := func(slot: int, card_id: String) -> void:
+		if not loser_ids.has(slot) or picks.has(slot):
+			return
+		if not CardPickSync.is_valid_pick(slot, card_id, serialized):
+			return
+		picks[slot] = CardRegistry.get_card(card_id) if card_id != "" else null
+	NetReplicator.card_pick_received.connect(on_remote_pick)
+
+	# If the host's own square lost, it picks on this screen (driven by p1).
+	var host_ui: CardSelectionUI = null
+	if loser_ids.has(local_slot) and hands.has(local_slot):
+		host_ui = CardSelectionUI.new()
+		add_child(host_ui)
+		host_ui.begin({local_slot: hands[local_slot]}, {local_slot: 0})
+		host_ui.selection_complete.connect(func(p: Dictionary) -> void:
+			if p.has(local_slot) and not picks.has(local_slot):
+				picks[local_slot] = p[local_slot])
+
+	# Gate the next round on every loser's pick being in (no timeout — the same
+	# indefinite wait as local play; a dropped peer is #28's resilience scope).
+	while not CardPickSync.all_picked(loser_ids, picks):
+		await get_tree().process_frame
+		if _match_over:
+			break
+
+	if NetReplicator.card_pick_received.is_connected(on_remote_pick):
+		NetReplicator.card_pick_received.disconnect(on_remote_pick)
+	if is_instance_valid(host_ui):
+		host_ui.queue_free()
+	_record_picks(picks)
 
 
 ## Stores each pick's effect against its player slot; it is (re-)applied to the
@@ -285,9 +334,15 @@ func _on_match_event(kind: String, data: Dictionary) -> void:
 			_client_match_restart()
 		"player_died":
 			_client_player_died(data)
+		"card_selection":
+			_client_card_selection(data)
 
 
 func _client_round_start(data: Dictionary) -> void:
+	# Tear down any lingering pick screen before the next round renders.
+	if is_instance_valid(_card_ui):
+		_card_ui.queue_free()
+		_card_ui = null
 	_clear()
 	arena_id = str(data.get("arena_id", arena_id))
 	player_count = clamp_player_count(int(data.get("player_count", player_count)))
@@ -341,6 +396,45 @@ func _client_player_died(data: Dictionary) -> void:
 		if is_instance_valid(p) and p.player_id == dead_id:
 			p.health.kill()
 			return
+
+
+## Client-side online pick phase (#82): shows the pick screen only when this
+## peer's own square lost, driven by this machine's primary (p1) bindings, and
+## replicates the chosen card back to the host. A non-losing peer just waits for
+## the host's next `round_start`.
+func _client_card_selection(data: Dictionary) -> void:
+	if is_instance_valid(_card_ui):
+		_card_ui.queue_free()
+		_card_ui = null
+	var raw = data.get("hands", {})
+	var serialized: Dictionary = raw if raw is Dictionary else {}
+	var my_slot := NetworkManager.local_slot()
+	if not serialized.has(my_slot):
+		return  # this peer's square didn't lose — nothing to pick
+	GameManager.begin_card_selection()
+	_hud.hide_center()
+	var hand := _cards_from_ids(serialized[my_slot])
+	_card_ui = CardSelectionUI.new()
+	add_child(_card_ui)
+	_card_ui.begin({my_slot: hand}, {my_slot: 0})
+	var picks: Dictionary = await _card_ui.selection_complete
+	var card = picks.get(my_slot, null)
+	NetReplicator.send_card_pick(my_slot, String(card.id) if card != null else "")
+	if is_instance_valid(_card_ui):
+		_card_ui.queue_free()
+		_card_ui = null
+
+
+## Resolves a list of broadcast card ids back to Card instances via CardRegistry,
+## dropping any id not registered on this peer.
+func _cards_from_ids(ids) -> Array:
+	var hand: Array = []
+	if ids is Array:
+		for id in ids:
+			var card := CardRegistry.get_card(String(id))
+			if card != null:
+				hand.append(card)
+	return hand
 
 
 # ---------------------------------------------------------------------------
