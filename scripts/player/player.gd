@@ -63,6 +63,14 @@ var _input_seq: int = 0
 ## Last replicated input a SIMULATED player applied; held across ticks the
 ## input stream skips so packet loss doesn't read as a released stick.
 var _last_net_input: NetPlayerInput = null
+## Damaging-elastic-border state (#84). True while this player's body is touching
+## or past a map border; `_border_damage_timer` counts down to the next 50-damage
+## tick during that excursion. Both reset on re-entry and on respawn.
+var _out_of_bounds: bool = false
+var _border_damage_timer: float = 0.0
+## Body half-extents used for the border contact test, read from the collision
+## shape at `_ready` (falls back to the player.tscn rectangle half-size).
+var _body_half_extent: Vector2 = Vector2(14.0, 20.0)
 
 @onready var health: Health = $Health
 @onready var weapon: Weapon = $Weapon
@@ -79,6 +87,11 @@ func _ready() -> void:
 	health.died.connect(_on_died)
 	health.damaged.connect(_on_damaged)
 	add_to_group(Projectile.TARGET_GROUP)
+	# Cache the body's half-extents for the map-border contact test (#84) from the
+	# actual collision shape, so the boundary keys off the real footprint.
+	var shape_node := get_node_or_null("CollisionShape2D") as CollisionShape2D
+	if shape_node and shape_node.shape is RectangleShape2D:
+		_body_half_extent = (shape_node.shape as RectangleShape2D).size * 0.5
 
 
 func _physics_process(delta: float) -> void:
@@ -123,9 +136,13 @@ func _step(input: NetPlayerInput, delta: float, replay: bool = false) -> void:
 	_tick_coyote(delta, on_floor)
 	_was_on_floor = on_floor
 	_tick_jump_buffer(delta, input.jump)
-	_apply_gravity(delta, input.move_axis)
-	_apply_horizontal(delta, input.move_axis)
-	_try_jump(input.move_axis)
+	# While out of bounds (#84) the elastic restoring force is the ONLY force that
+	# acts — gravity, friction, and movement input are all suppressed until the
+	# player is repelled back into the play area.
+	if not _update_border(delta, replay):
+		_apply_gravity(delta, input.move_axis)
+		_apply_horizontal(delta, input.move_axis)
+		_try_jump(input.move_axis)
 	if not replay:
 		_handle_shoot(input)
 	move_and_slide()
@@ -205,6 +222,57 @@ func _is_wall_sliding(move_axis: float) -> bool:
 		return false
 	# True when the player is pressing into (not away from) the wall.
 	return sign(move_axis) == -sign(get_wall_normal().x)
+
+
+# ---------------------------------------------------------------------------
+# Damaging elastic map border (#84)
+# ---------------------------------------------------------------------------
+
+## Applies the damaging-elastic-border behaviour for one tick and returns true
+## when the player is out of bounds (so [_step] suppresses normal physics and
+## lets the restoring force alone govern motion).
+##
+## On the frame the border is first touched the player takes an immediate
+## 50-damage hit and an inward bounce impulse; while it stays out it keeps taking
+## 50 damage every 500 ms and is pushed inward by a penetration-scaled spring.
+## Crossing back in resets the excursion. Damage is authority-side and never
+## re-applied during a reconciliation replay (HP is host-authoritative, #27),
+## mirroring how shooting is gated by role.
+func _update_border(delta: float, replay: bool) -> bool:
+	var pen := MapBorder.penetration(global_position, _body_half_extent)
+	if pen == Vector2.ZERO:
+		_out_of_bounds = false
+		_border_damage_timer = 0.0
+		return false
+
+	var first_contact := not _out_of_bounds
+	_out_of_bounds = true
+
+	# Penetration-scaled restoring force (Hooke's law), plus a one-shot inward
+	# bounce on first contact so even a light touch is repelled.
+	velocity += MapBorder.restoring_acceleration(pen) * delta
+	if first_contact:
+		velocity += MapBorder.contact_impulse(pen)
+
+	if not replay and _is_damage_authority():
+		if first_contact:
+			_border_damage_timer = MapBorder.DAMAGE_INTERVAL
+			take_damage(MapBorder.DAMAGE_PER_TICK)
+		else:
+			var accrued := MapBorder.accrue_damage(_border_damage_timer, delta)
+			_border_damage_timer = accrued["timer"]
+			if accrued["damage"] > 0.0:
+				take_damage(accrued["damage"])
+
+	return true
+
+
+## True for the machine that authoritatively owns this player's health: offline
+## players and the host's own square (LOCAL) and the host's stand-ins for remote
+## clients (SIMULATED). A PREDICTED client square only predicts movement — its
+## border damage arrives from the host via snapshot — and a PUPPET never steps.
+func _is_damage_authority() -> bool:
+	return net_role == NetRole.LOCAL or net_role == NetRole.SIMULATED
 
 
 # ---------------------------------------------------------------------------
@@ -321,6 +389,9 @@ func respawn(spawn_position: Vector2) -> void:
 	global_position = spawn_position
 	velocity = Vector2.ZERO
 	health.reset()
+	# Clear any out-of-bounds excursion so a respawn starts with fresh physics (#84).
+	_out_of_bounds = false
+	_border_damage_timer = 0.0
 	# Drop any snapshot samples from the previous round so a freshly spawned
 	# PUPPET doesn't interpolate toward stale positions (#28).
 	interpolation.clear()
