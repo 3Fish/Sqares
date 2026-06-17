@@ -144,12 +144,19 @@ static func is_in_blast_radius(center: Vector2, point: Vector2, radius: float) -
 
 ## Nearest living combatant (group member) other than the shooter, or null.
 func _find_nearest_target() -> Node2D:
+	return select_nearest_target(get_tree().get_nodes_in_group(TARGET_GROUP), global_position, shooter)
+
+
+## Nearest `Node2D` in `candidates` to `origin`, excluding `exclude` (the
+## shooter) and any non-`Node2D` entry, or null when none qualify. Pure so the
+## homing target selection is unit-tested without a live scene tree.
+static func select_nearest_target(candidates: Array, origin: Vector2, exclude: Node) -> Node2D:
 	var nearest: Node2D = null
 	var best := INF
-	for node in get_tree().get_nodes_in_group(TARGET_GROUP):
-		if node == shooter or not (node is Node2D):
+	for node in candidates:
+		if node == exclude or not (node is Node2D):
 			continue
-		var d: float = global_position.distance_squared_to((node as Node2D).global_position)
+		var d: float = origin.distance_squared_to((node as Node2D).global_position)
 		if d < best:
 			best = d
 			nearest = node
