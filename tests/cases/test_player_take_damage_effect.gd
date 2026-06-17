@@ -26,7 +26,9 @@ func after_each() -> void:
 
 func _test_player_forwards_taken_damage_to_its_effects() -> void:
 	var player: Player = PLAYER_SCENE.instantiate()
-	var attacker := RefCounted.new()
+	# `_on_damaged` (and `Health.damaged`) types the attacker as `Node`, so the
+	# stand-in must be a Node, not a bare RefCounted.
+	var attacker := Node.new()
 	var effect := _Recorder.new()
 	EffectEngine.apply_effect(player, effect)
 
@@ -36,3 +38,4 @@ func _test_player_forwards_taken_damage_to_its_effects() -> void:
 	assert_eq(effect.hits[0]["target"], attacker, "the attacker is carried as the target")
 	assert_almost_eq(effect.hits[0]["damage"], 13.0, "the damage taken is carried through")
 	player.free()
+	attacker.free()

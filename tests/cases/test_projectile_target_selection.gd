@@ -1,36 +1,41 @@
 extends TestCase
 
-## Projectile._find_nearest_target picks the closest group member, excluding
+## Projectile.select_nearest_target picks the closest group member, excluding
 ## the shooter, and returns null when no valid targets remain (#21).
+##
+## Exercised as a pure static helper so it needs no live scene tree: the headless
+## `--script` runner executes inside `_initialize()` before the tree is live, so
+## nodes added to `root` are not yet in-tree and `get_tree()` is unavailable.
+## `_find_nearest_target` simply feeds this helper the live group members.
 
 
-func _test_find_nearest_target() -> void:
-	var tree := Engine.get_main_loop() as SceneTree
+func _test_select_nearest_target() -> void:
 	var shooter := Node2D.new()
-	tree.root.add_child(shooter)
-	shooter.add_to_group(Projectile.TARGET_GROUP)
 	var far := Node2D.new()
 	far.position = Vector2(500.0, 0.0)
-	tree.root.add_child(far)
-	far.add_to_group(Projectile.TARGET_GROUP)
 	var near := Node2D.new()
 	near.position = Vector2(100.0, 0.0)
-	tree.root.add_child(near)
-	near.add_to_group(Projectile.TARGET_GROUP)
-	var proj := Projectile.new()
-	tree.root.add_child(proj)
-	proj.global_position = Vector2.ZERO
-	proj.shooter = shooter
+	var candidates: Array = [shooter, far, near]
 
-	var found := proj._find_nearest_target()
+	var found := Projectile.select_nearest_target(candidates, Vector2.ZERO, shooter)
 	assert_true(found == near, "picks nearest group member")
 	assert_true(found != shooter, "excludes the shooter even when closest")
 
-	near.remove_from_group(Projectile.TARGET_GROUP)
-	far.remove_from_group(Projectile.TARGET_GROUP)
-	assert_true(proj._find_nearest_target() == null, "returns null when no valid targets")
+	# With only the shooter in range there is no valid target.
+	assert_true(
+		Projectile.select_nearest_target([shooter], Vector2.ZERO, shooter) == null,
+		"returns null when no valid targets remain")
 
-	proj.free()
+	# Non-Node2D candidates are skipped rather than crashing.
+	assert_true(
+		Projectile.select_nearest_target([RefCounted.new()], Vector2.ZERO, shooter) == null,
+		"ignores non-Node2D candidates")
+
+	# Empty candidate set yields no target.
+	assert_true(
+		Projectile.select_nearest_target([], Vector2.ZERO, shooter) == null,
+		"no candidates -> null")
+
 	shooter.free()
 	far.free()
 	near.free()

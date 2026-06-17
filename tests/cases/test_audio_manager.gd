@@ -7,6 +7,10 @@ extends TestCase
 
 
 func _test_buses_created() -> void:
+	# The headless `--script` runner executes inside `_initialize()` before the
+	# tree is live, so AudioManager's `_ready` (which builds the bus layout) never
+	# fires. Invoke the idempotent creation path directly to exercise it.
+	AudioManager._ensure_buses()
 	assert_true(AudioServer.get_bus_index("Master") == 0, "Master bus is index 0")
 	assert_true(AudioServer.get_bus_index(AudioManager.BUS_MUSIC) >= 0, "Music bus exists")
 	assert_true(AudioServer.get_bus_index(AudioManager.BUS_SFX) >= 0, "SFX bus exists")

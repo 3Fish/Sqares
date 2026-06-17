@@ -86,7 +86,9 @@ func _test_unregister_unknown_peer_is_noop() -> void:
 func _test_slots_in_use() -> void:
 	nm.register_peer(1)
 	nm.register_peer(2)
-	var taken := nm.slots_in_use()
+	# `nm` is an untyped instance, so the call's return type can't be inferred;
+	# annotate explicitly rather than using `:=`.
+	var taken: Array = nm.slots_in_use()
 	assert_eq(taken.size(), 2, "two slots in use")
 	assert_true(taken.has(0) and taken.has(1), "slots 0 and 1 reported")
 
