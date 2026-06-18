@@ -78,7 +78,12 @@ func _physics_process(delta: float) -> void:
 		return
 
 	var collider := collision.get_collider()
-	if collider.has_method("take_damage"):
+	# A platform block is a physics block (#96, pushable) and/or a destructible
+	# block (#97, damageable). Either way it is solid: the bullet bounces/stops
+	# against it like any wall and is never treated as a combatant (no knockback,
+	# explosion, lifesteal, or effect-hit dispatch).
+	var is_block := collider.has_method("receive_push") or collider.has_method("damage_block")
+	if collider.has_method("take_damage") and not is_block:
 		if visual_only:
 			# Client-side instance: impact feedback only; the host resolves the
 			# real hit and its damage arrives via snapshot / death event.
@@ -95,13 +100,17 @@ func _physics_process(delta: float) -> void:
 		SfxDirector.play(SfxDirector.HIT)
 		EffectEngine.notify_hit(shooter if is_instance_valid(shooter) else null, collider, self, damage)
 		queue_free()
-	elif collider.has_method("receive_push"):
-		# Physics block (#96): impart a mass/velocity-scaled impulse but do not
-		# damage or get consumed by the push — the bullet bounces if it has
-		# bounces left, otherwise stops like hitting any solid. Visual-only
-		# (client) instances skip the push; blocks are host-authoritative.
+	elif is_block:
+		# Block (#96/#97): impart a mass/velocity-scaled impulse into a physics
+		# block and/or deal damage to a destructible one — independently, per the
+		# flags. The bullet is never consumed by these (it does not "stick"): it
+		# bounces if it has bounces left, otherwise stops like hitting any solid.
+		# Visual-only (client) instances skip both; blocks are host-authoritative.
 		if not visual_only:
-			collider.receive_push(PhysicsModel.push_impulse(_mass, velocity, collision.get_normal()))
+			if collider.has_method("receive_push"):
+				collider.receive_push(PhysicsModel.push_impulse(_mass, velocity, collision.get_normal()))
+			if collider.has_method("damage_block"):
+				collider.damage_block(damage)
 		if bounces_remaining > 0:
 			velocity = velocity.bounce(collision.get_normal())
 			bounces_remaining -= 1
