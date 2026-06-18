@@ -49,9 +49,11 @@ func configure(size: Vector2) -> void:
 
 ## Flags this block as destructible (#97), giving it a size-derived health pool.
 ## Called by [ArenaBuilder] when the platform carries the `destructible` flag.
-## Must be called after [method configure] so `block_size` is set.
+## Must be called after [method configure] so `block_size` is set. Joins the
+## destructible-block group so explosion AoE (#103) can sweep it.
 func make_destructible() -> void:
 	_health = BlockHealth.new(block_size)
+	add_to_group(Projectile.DESTRUCTIBLE_GROUP)
 
 
 ## Whether this block can be destroyed (carries a health pool).

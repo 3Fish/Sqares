@@ -8,6 +8,10 @@ const GRAVITY_SCALE := 1.0
 const HOMING_TURN_RATE := 6.0
 ## Scene group that homing bullets steer toward and knockback can push.
 const TARGET_GROUP := "players"
+## Scene group of destructible platform blocks (#97). Explosion AoE sweeps this
+## group so a blast also damages nearby destructible blocks, not only the one a
+## bullet hits directly. Destructible blocks join it at build time.
+const DESTRUCTIBLE_GROUP := "destructible_blocks"
 
 var damage: float = 25.0
 var lifesteal: float = 0.0
@@ -147,7 +151,8 @@ static func compute_homing_velocity(
 
 ## Deals AoE damage to every combatant within `explosion_radius` of `center`,
 ## excluding the shooter (no self-damage) and the directly-hit target (which has
-## already taken the impact damage). Splash victims take the full bullet `damage`;
+## already taken the impact damage), and additionally damages every destructible
+## block (#97) in the blast (#103). Splash victims take the full bullet `damage`;
 ## blast falloff and team/friendly-fire filtering are deferred tuning (see #26).
 func _detonate(center: Vector2, direct_target: Node) -> void:
 	for node in get_tree().get_nodes_in_group(TARGET_GROUP):
@@ -157,6 +162,33 @@ func _detonate(center: Vector2, direct_target: Node) -> void:
 			continue
 		if is_in_blast_radius(center, (node as Node2D).global_position, explosion_radius):
 			node.take_damage(damage, shooter if is_instance_valid(shooter) else null)
+
+	# #103: extend the blast to destructible blocks so an explosion near one
+	# damages it, not just a bullet that strikes it directly.
+	damage_blocks_in_blast(get_tree().get_nodes_in_group(DESTRUCTIBLE_GROUP), center, direct_target)
+
+
+## Applies the bullet `damage` to every destructible block in `candidates` whose
+## position lies within `explosion_radius` of `center`, skipping `direct_target`
+## (already damaged by the impact). Split out from `_detonate` so the blast→block
+## dispatch is unit-tested with real blocks without a live scene tree.
+func damage_blocks_in_blast(candidates: Array, center: Vector2, direct_target: Node) -> void:
+	for node in blast_targets_in_radius(candidates, center, explosion_radius, direct_target):
+		if node.has_method("damage_block"):
+			node.damage_block(damage)
+
+
+## The `Node2D` members of `candidates` within `radius` of `center`, excluding
+## `direct_target` and any non-`Node2D` entry. Pure function so the AoE block
+## selection is unit-tested without a live scene tree.
+static func blast_targets_in_radius(candidates: Array, center: Vector2, radius: float, direct_target: Node) -> Array:
+	var hit: Array = []
+	for node in candidates:
+		if node == direct_target or not (node is Node2D):
+			continue
+		if is_in_blast_radius(center, (node as Node2D).global_position, radius):
+			hit.append(node)
+	return hit
 
 
 ## True when `point` lies within `radius` of `center` (inclusive of the edge).
