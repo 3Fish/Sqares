@@ -38,6 +38,11 @@ func _register_base_stats() -> void:
 	StatRegistry.register("jump_force",      550.0)
 	StatRegistry.register("gravity_scale",   1.0)
 
+	# Physics / body stats
+	# Player body size — drives the player's mass in the physics system (#96):
+	# mass = player_size * density. Registered (not a const) so cards can tune it.
+	StatRegistry.register("player_size",     32.0)
+
 	# Combat stats
 	StatRegistry.register("max_health",      100.0)
 	StatRegistry.register("damage",          25.0)

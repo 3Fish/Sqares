@@ -136,11 +136,22 @@ static func _build_background(data: ArenaData) -> Polygon2D:
 	return bg
 
 
-static func _build_platform(platform: Dictionary, index: int) -> StaticBody2D:
+## Builds one platform node. A `physics`-flagged platform (#96) becomes a
+## pushable [PhysicsBlock] (RigidBody2D); otherwise a solid [StaticBody2D].
+## Both carry a centred rectangle collision shape and a Polygon2D visual, so
+## they render identically — only the body type (and behaviour) differs.
+static func _build_platform(platform: Dictionary, index: int) -> PhysicsBody2D:
 	var size: Vector2 = platform.get("size", Vector2.ZERO)
 	var color: Color = platform.get("color", PLATFORM_COLOR)
+	var is_physics: bool = bool(platform.get("physics", false))
 
-	var body := StaticBody2D.new()
+	var body: PhysicsBody2D
+	if is_physics:
+		var block := PhysicsBlock.new()
+		block.configure(size)
+		body = block
+	else:
+		body = StaticBody2D.new()
 	body.name = "Platform%d" % index
 	body.position = platform.get("position", Vector2.ZERO)
 

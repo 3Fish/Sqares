@@ -25,6 +25,9 @@ var net_id: String = ""
 
 var _lifetime: float = 6.0
 var _base_gravity: float
+## Physics mass derived from the bullet's size/damage (#96); drives the impulse
+## this bullet imparts into a physics block on impact.
+var _mass: float = 0.0
 
 
 func setup(
@@ -48,6 +51,7 @@ func setup(
 	knockback_force   = p_knockback
 	explosion_radius  = p_explosion_radius
 	shooter           = p_shooter
+	_mass             = PhysicsModel.bullet_mass(p_scale, p_damage)
 
 
 func _ready() -> void:
@@ -91,6 +95,19 @@ func _physics_process(delta: float) -> void:
 		SfxDirector.play(SfxDirector.HIT)
 		EffectEngine.notify_hit(shooter if is_instance_valid(shooter) else null, collider, self, damage)
 		queue_free()
+	elif collider.has_method("receive_push"):
+		# Physics block (#96): impart a mass/velocity-scaled impulse but do not
+		# damage or get consumed by the push — the bullet bounces if it has
+		# bounces left, otherwise stops like hitting any solid. Visual-only
+		# (client) instances skip the push; blocks are host-authoritative.
+		if not visual_only:
+			collider.receive_push(PhysicsModel.push_impulse(_mass, velocity, collision.get_normal()))
+		if bounces_remaining > 0:
+			velocity = velocity.bounce(collision.get_normal())
+			bounces_remaining -= 1
+			SfxDirector.play(SfxDirector.BOUNCE)
+		else:
+			queue_free()
 	elif bounces_remaining > 0:
 		velocity = velocity.bounce(collision.get_normal())
 		bounces_remaining -= 1
