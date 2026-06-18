@@ -43,6 +43,11 @@ static func build(data: ArenaData) -> Arena:
 	if kill_zone:
 		root.add_child(kill_zone)
 
+	# Ropes resolve their block endpoints by `Platform<index>` name, so the
+	# platforms above are already in the tree when each rope's `_ready` runs.
+	for i in data.ropes.size():
+		root.add_child(_build_rope(data, data.ropes[i], i))
+
 	return root
 
 
@@ -90,6 +95,20 @@ static func compute_bounds(data: ArenaData) -> Rect2:
 		min_p = min_p.min(pos - half)
 		max_p = max_p.max(pos + half)
 		has_any = true
+
+	# Include rope world anchors so a mid-air anchor isn't left off the
+	# background; block endpoints are already covered by their platforms.
+	for r in data.ropes:
+		if int(r.get("a_block", -1)) < 0:
+			var pa: Vector2 = r.get("a_anchor", Vector2.ZERO)
+			min_p = min_p.min(pa)
+			max_p = max_p.max(pa)
+			has_any = true
+		if int(r.get("b_block", -1)) < 0:
+			var pb: Vector2 = r.get("b_anchor", Vector2.ZERO)
+			min_p = min_p.min(pb)
+			max_p = max_p.max(pb)
+			has_any = true
 
 	if not has_any:
 		return Rect2(
@@ -191,6 +210,36 @@ static func _build_spawn(position: Vector2, index: int) -> Node2D:
 	# Mirror the built-in arenas, which also tag spawns for discoverability.
 	spawn.add_to_group("spawn_point")
 	return spawn
+
+
+## Builds one Chain/Rope (#98) from its endpoint config. Block endpoints are
+## stored as platform indices that the [Rope] resolves from its `Platform<index>`
+## siblings at `_ready`; world anchors are stored as points. The rope length is
+## baked from the endpoints' initial separation when the data left it automatic
+## (negative), so a packed/instanced arena keeps a stable length.
+static func _build_rope(data: ArenaData, rope: Dictionary, index: int) -> Rope:
+	var node := Rope.new()
+	node.name = "Rope%d" % index
+	node.endpoint_a_block = int(rope.get("a_block", -1))
+	node.endpoint_a_anchor = rope.get("a_anchor", Vector2.ZERO)
+	node.endpoint_b_block = int(rope.get("b_block", -1))
+	node.endpoint_b_anchor = rope.get("b_anchor", Vector2.ZERO)
+
+	var length := float(rope.get("length", -1.0))
+	if length < 0.0:
+		var pa := _rope_endpoint_point(data, node.endpoint_a_block, node.endpoint_a_anchor)
+		var pb := _rope_endpoint_point(data, node.endpoint_b_block, node.endpoint_b_anchor)
+		length = pa.distance_to(pb)
+	node.rope_length = length
+	return node
+
+
+## The arena-space point of a rope endpoint: a platform's centre when `block` is a
+## valid index, otherwise the world `anchor`.
+static func _rope_endpoint_point(data: ArenaData, block: int, anchor: Vector2) -> Vector2:
+	if block >= 0 and block < data.platforms.size():
+		return data.platforms[block].get("position", Vector2.ZERO)
+	return anchor
 
 
 ## Build one `KillZone` Area2D holding a collision shape per data kill zone, or
