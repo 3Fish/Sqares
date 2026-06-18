@@ -39,6 +39,14 @@ const DAMAGE_PER_TICK := 50.0
 ## Interval between damage ticks while out of bounds, in seconds (50 per 500 ms).
 const DAMAGE_INTERVAL := 0.5
 
+## Tolerance (seconds) for the damage-countdown boundary. When per-frame deltas
+## sum to exactly an interval, the countdown can land a few float-ulps *above*
+## zero (e.g. `0.5 - 5*0.1 == 2.78e-17`) and the tick that should fire on that
+## boundary is silently lost — degrading the 50-per-500 ms cadence to 50/s. A
+## small tolerance fires the boundary tick anyway; `1e-9` s is far above the
+## accumulated float noise yet far below any meaningful game time.
+const TICK_EPSILON := 1e-9
+
 
 ## Inward penetration of a body of half-size `half` centred at `center` past the
 ## border at `half_extent`. The returned vector points **inward** (the direction
@@ -97,7 +105,7 @@ static func contact_impulse(pen: Vector2) -> Vector2:
 static func accrue_damage(timer: float, delta: float) -> Dictionary:
 	var remaining := timer - delta
 	var damage := 0.0
-	while remaining <= 0.0:
+	while remaining <= TICK_EPSILON:
 		damage += DAMAGE_PER_TICK
 		remaining += DAMAGE_INTERVAL
 	return {"damage": damage, "timer": remaining}

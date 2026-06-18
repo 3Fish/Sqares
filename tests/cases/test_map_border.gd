@@ -124,6 +124,20 @@ func _test_steady_cadence_is_one_tick_per_interval() -> void:
 	assert_almost_eq(total, 100.0, "two ticks over one second of contact")
 
 
+func _test_cadence_survives_float_drift_over_a_long_run() -> void:
+	# Regression for the 0.5 - 5*0.1 == 2.78e-17 boundary drift: at a realistic
+	# 1/60 s frame delta over six seconds the rate must stay 50 per 500 ms
+	# (12 ticks = 600), not silently drop a tick each time the countdown lands
+	# a few float-ulps above zero on an interval boundary.
+	var timer := Border.DAMAGE_INTERVAL
+	var total := 0.0
+	for _i in 360:
+		var acc := Border.accrue_damage(timer, 1.0 / 60.0)
+		timer = acc["timer"]
+		total += acc["damage"]
+	assert_almost_eq(total, 600.0, "12 ticks over six seconds of contact")
+
+
 # --- Sanity on the tuned contract -------------------------------------------
 
 func _test_play_area_matches_the_view_edge() -> void:
