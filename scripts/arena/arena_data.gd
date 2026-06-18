@@ -25,10 +25,14 @@ var background_color: Color = Color(0.09, 0.09, 0.16, 1.0)
 
 # --- Geometry ---------------------------------------------------------------
 ## Solid platforms. Each entry:
-## { "position": Vector2, "size": Vector2, "color": Color, "physics": bool }.
+## { "position": Vector2, "size": Vector2, "color": Color, "physics": bool,
+##   "destructible": bool }.
 ## `position` is the centre of the rectangle; `size` is its full extent.
 ## `physics` (default false) flags the block as a pushable, gravity-affected
-## RigidBody2D (#96) instead of a static platform; #97 adds a `destructible` flag.
+## RigidBody2D (#96) instead of a static platform. `destructible` (default false,
+## #97) flags the block as damageable — it takes bullet damage and is removed
+## when its size-derived health reaches zero. The two flags are independent and
+## combinable (none, either, or both).
 var platforms: Array[Dictionary] = []
 
 ## Player spawn locations (centres), in placement order.
@@ -40,10 +44,11 @@ var kill_zones: Array[Dictionary] = []
 
 # --- Construction helpers ---------------------------------------------------
 
-## Append a platform. `physics` flags it as a pushable physics block (#96).
+## Append a platform. `physics` flags it as a pushable physics block (#96);
+## `destructible` flags it as damageable (#97). The flags are independent.
 ## Returns self for chaining.
-func add_platform(position: Vector2, size: Vector2, color: Color = Color(0.3, 0.3, 0.45, 1.0), physics: bool = false) -> ArenaData:
-	platforms.append({"position": position, "size": size, "color": color, "physics": physics})
+func add_platform(position: Vector2, size: Vector2, color: Color = Color(0.3, 0.3, 0.45, 1.0), physics: bool = false, destructible: bool = false) -> ArenaData:
+	platforms.append({"position": position, "size": size, "color": color, "physics": physics, "destructible": destructible})
 	return self
 
 
@@ -91,6 +96,7 @@ func to_dict() -> Dictionary:
 			"size": _vec_to_arr(p.get("size", Vector2.ZERO)),
 			"color": _color_to_arr(p.get("color", Color.WHITE)),
 			"physics": bool(p.get("physics", false)),
+			"destructible": bool(p.get("destructible", false)),
 		})
 	var spawns: Array = []
 	for s in spawn_points:
@@ -132,6 +138,7 @@ static func from_dict(data: Dictionary) -> ArenaData:
 				"size": _arr_to_vec(p.get("size", []), Vector2.ZERO),
 				"color": _arr_to_color(p.get("color", []), Color(0.3, 0.3, 0.45, 1.0)),
 				"physics": bool(p.get("physics", false)),
+				"destructible": bool(p.get("destructible", false)),
 			})
 
 	for s in _as_array(data.get("spawn_points", [])):

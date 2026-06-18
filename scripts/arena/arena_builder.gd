@@ -136,20 +136,32 @@ static func _build_background(data: ArenaData) -> Polygon2D:
 	return bg
 
 
-## Builds one platform node. A `physics`-flagged platform (#96) becomes a
-## pushable [PhysicsBlock] (RigidBody2D); otherwise a solid [StaticBody2D].
-## Both carry a centred rectangle collision shape and a Polygon2D visual, so
-## they render identically — only the body type (and behaviour) differs.
+## Builds one platform node from its independent `physics` (#96) and
+## `destructible` (#97) flags:
+## - neither: a solid [StaticBody2D];
+## - physics: a pushable [PhysicsBlock] (RigidBody2D);
+## - destructible only: a damageable static [DestructibleBlock];
+## - physics + destructible: a [PhysicsBlock] made destructible (pushable AND
+##   damageable).
+## All carry a centred rectangle collision shape and a Polygon2D visual, so they
+## render identically — only the body type (and behaviour) differs.
 static func _build_platform(platform: Dictionary, index: int) -> PhysicsBody2D:
 	var size: Vector2 = platform.get("size", Vector2.ZERO)
 	var color: Color = platform.get("color", PLATFORM_COLOR)
 	var is_physics: bool = bool(platform.get("physics", false))
+	var is_destructible: bool = bool(platform.get("destructible", false))
 
 	var body: PhysicsBody2D
 	if is_physics:
 		var block := PhysicsBlock.new()
 		block.configure(size)
+		if is_destructible:
+			block.make_destructible()
 		body = block
+	elif is_destructible:
+		var dblock := DestructibleBlock.new()
+		dblock.configure(size)
+		body = dblock
 	else:
 		body = StaticBody2D.new()
 	body.name = "Platform%d" % index
