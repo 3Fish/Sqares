@@ -29,9 +29,11 @@ var _health: BlockHealth = null
 ## Sets the block's footprint and derives its health from the area. Called by
 ## [ArenaBuilder] at build time. Collision layer stays on the default static
 ## layer so players and bullets collide with it exactly like a normal platform.
+## Joins the destructible-block group so explosion AoE (#103) can sweep it.
 func configure(size: Vector2) -> void:
 	block_size = size
 	_health = BlockHealth.new(size)
+	add_to_group(Projectile.DESTRUCTIBLE_GROUP)
 
 
 ## Remaining health, or zero before the block is configured.
