@@ -1,12 +1,6 @@
-[gd_scene load_steps=11 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://scripts/arena/arena_base.gd" id="1_arena"]
-
-[sub_resource type="RectangleShape2D" id="Shape_wall_l"]
-size = Vector2(32, 720)
-
-[sub_resource type="RectangleShape2D" id="Shape_wall_r"]
-size = Vector2(32, 720)
 
 [sub_resource type="RectangleShape2D" id="Shape_ground_l"]
 size = Vector2(240, 24)
@@ -26,9 +20,6 @@ size = Vector2(200, 24)
 [sub_resource type="RectangleShape2D" id="Shape_killzone"]
 size = Vector2(1600, 32)
 
-[sub_resource type="RectangleShape2D" id="Shape_ceil"]
-size = Vector2(1600, 32)
-
 [node name="ArenaCrossroads" type="Node2D"]
 script = ExtResource("1_arena")
 
@@ -39,26 +30,6 @@ color = Color(0.09, 0.09, 0.16, 1)
 [node name="Camera2D" type="Camera2D" parent="."]
 position = Vector2(0, 0)
 zoom = Vector2(1, 1)
-
-[node name="WallLeft" type="StaticBody2D" parent="."]
-position = Vector2(-624, 0)
-
-[node name="CollisionShape2D" type="CollisionShape2D" parent="WallLeft"]
-shape = SubResource("Shape_wall_l")
-
-[node name="Visual" type="Polygon2D" parent="WallLeft"]
-polygon = PackedVector2Array(-16, -360, 16, -360, 16, 360, -16, 360)
-color = Color(0.22, 0.22, 0.32, 1)
-
-[node name="WallRight" type="StaticBody2D" parent="."]
-position = Vector2(624, 0)
-
-[node name="CollisionShape2D" type="CollisionShape2D" parent="WallRight"]
-shape = SubResource("Shape_wall_r")
-
-[node name="Visual" type="Polygon2D" parent="WallRight"]
-polygon = PackedVector2Array(-16, -360, 16, -360, 16, 360, -16, 360)
-color = Color(0.22, 0.22, 0.32, 1)
 
 [node name="GroundLeft" type="StaticBody2D" parent="."]
 position = Vector2(-400, 280)
@@ -117,12 +88,6 @@ position = Vector2(0, 440)
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="KillZone"]
 shape = SubResource("Shape_killzone")
-
-[node name="Ceiling" type="StaticBody2D" parent="."]
-position = Vector2(0, -380)
-
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Ceiling"]
-shape = SubResource("Shape_ceil")
 
 [node name="SpawnLeft" type="Node2D" parent="."]
 groups = ["spawn_point"]
