@@ -41,6 +41,18 @@ var spawn_points: Array[Vector2] = []
 ## Lethal regions. Each entry: { "position": Vector2, "size": Vector2 }.
 var kill_zones: Array[Dictionary] = []
 
+## Chain/Rope constraint objects (#98). Each entry:
+## { "a_block": int, "a_anchor": Vector2, "b_block": int, "b_anchor": Vector2,
+##   "length": float }.
+## Each endpoint (`a` / `b`) is either a platform block — `*_block` is its index
+## into `platforms` — or a mid-air world anchor when `*_block` is `-1` (then the
+## endpoint sits at `*_anchor`). `length` is the rope's max endpoint separation;
+## a negative value means "derive from the endpoints' initial separation". A rope
+## holds a Physics-flagged endpoint block as a distance constraint; it is purely
+## decorative when neither endpoint is a physics block, and severs if a
+## Destructible endpoint block is destroyed.
+var ropes: Array[Dictionary] = []
+
 
 # --- Construction helpers ---------------------------------------------------
 
@@ -64,6 +76,19 @@ func add_kill_zone(position: Vector2, size: Vector2) -> ArenaData:
 	return self
 
 
+## Append a Chain/Rope (#98) between two endpoints. Each endpoint is either a
+## platform block (pass its index in `*_block`, leaving the anchor unused) or a
+## world anchor (pass `-1` for `*_block` and the point in `*_anchor`). `length`
+## defaults to the endpoints' initial separation (negative = auto). Returns self.
+func add_rope(a_block: int, a_anchor: Vector2, b_block: int, b_anchor: Vector2, length: float = -1.0) -> ArenaData:
+	ropes.append({
+		"a_block": a_block, "a_anchor": a_anchor,
+		"b_block": b_block, "b_anchor": b_anchor,
+		"length": length,
+	})
+	return self
+
+
 ## Remove the platform at `index` (no-op if out of range). Returns self.
 func remove_platform(index: int) -> ArenaData:
 	if index >= 0 and index < platforms.size():
@@ -82,6 +107,13 @@ func remove_spawn_point(index: int) -> ArenaData:
 func remove_kill_zone(index: int) -> ArenaData:
 	if index >= 0 and index < kill_zones.size():
 		kill_zones.remove_at(index)
+	return self
+
+
+## Remove the rope at `index` (no-op if out of range). Returns self.
+func remove_rope(index: int) -> ArenaData:
+	if index >= 0 and index < ropes.size():
+		ropes.remove_at(index)
 	return self
 
 
@@ -107,6 +139,15 @@ func to_dict() -> Dictionary:
 			"position": _vec_to_arr(k.get("position", Vector2.ZERO)),
 			"size": _vec_to_arr(k.get("size", Vector2.ZERO)),
 		})
+	var rps: Array = []
+	for r in ropes:
+		rps.append({
+			"a_block": int(r.get("a_block", -1)),
+			"a_anchor": _vec_to_arr(r.get("a_anchor", Vector2.ZERO)),
+			"b_block": int(r.get("b_block", -1)),
+			"b_anchor": _vec_to_arr(r.get("b_anchor", Vector2.ZERO)),
+			"length": float(r.get("length", -1.0)),
+		})
 	return {
 		"format_version": FORMAT_VERSION,
 		"id": id,
@@ -116,6 +157,7 @@ func to_dict() -> Dictionary:
 		"platforms": plats,
 		"spawn_points": spawns,
 		"kill_zones": kills,
+		"ropes": rps,
 	}
 
 
@@ -149,6 +191,16 @@ static func from_dict(data: Dictionary) -> ArenaData:
 			arena.kill_zones.append({
 				"position": _arr_to_vec(k.get("position", []), Vector2.ZERO),
 				"size": _arr_to_vec(k.get("size", []), Vector2.ZERO),
+			})
+
+	for r in _as_array(data.get("ropes", [])):
+		if r is Dictionary:
+			arena.ropes.append({
+				"a_block": int(r.get("a_block", -1)),
+				"a_anchor": _arr_to_vec(r.get("a_anchor", []), Vector2.ZERO),
+				"b_block": int(r.get("b_block", -1)),
+				"b_anchor": _arr_to_vec(r.get("b_anchor", []), Vector2.ZERO),
+				"length": float(r.get("length", -1.0)),
 			})
 
 	return arena
