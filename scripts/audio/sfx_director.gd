@@ -19,6 +19,12 @@ const BOUNCE := "bounce"
 ## feedback and the victim's "take damage" cue (one physical event).
 const HIT := "hit"
 const DEATH := "death"
+## Played when a Chain/Rope object snaps because a destructible endpoint block was
+## destroyed (#98/#104), fired from the sever seam in `Rope._on_endpoint_destroyed`.
+## A discrete "the rope snaps" event, distinct from the endpoint block's own
+## destruction cue. Fires once per rope (a block ↔ block rope does not re-fire when
+## its second endpoint is later destroyed).
+const ROPE_SEVERED := "rope_severed"
 const ROUND_START := "round_start"
 const ROUND_END := "round_end"
 const MATCH_WIN := "match_win"
@@ -26,7 +32,7 @@ const MATCH_WIN := "match_win"
 ## Every cue this director can request. Lets mods enumerate what to author and
 ## backs the "all names distinct / non-empty" sanity test.
 const ALL_CUES: Array[String] = [
-	SHOOT, BOUNCE, HIT, DEATH, ROUND_START, ROUND_END, MATCH_WIN,
+	SHOOT, BOUNCE, HIT, DEATH, ROPE_SEVERED, ROUND_START, ROUND_END, MATCH_WIN,
 ]
 
 ## UI cue names requested on the UI bus, not the SFX bus (#58, deferred from #30).
