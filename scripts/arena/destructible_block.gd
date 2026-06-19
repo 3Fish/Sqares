@@ -53,5 +53,6 @@ func damage_block(amount: float) -> void:
 	if _health == null or _health.is_destroyed():
 		return
 	if _health.take(amount):
+		SfxDirector.play(SfxDirector.BLOCK_DESTROYED)
 		destroyed.emit(self)
 		queue_free()
