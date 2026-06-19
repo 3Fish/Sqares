@@ -276,6 +276,15 @@ func _update_border(delta: float, replay: bool) -> bool:
 	velocity += MapBorder.restoring_acceleration(pen) * delta
 	if first_contact:
 		velocity += MapBorder.contact_impulse(pen)
+		# Audio analogue of the bounce: a one-shot "electric-fence touch" cue.
+		# Like the impulse it pairs with, this is local feedback fired on whichever
+		# machine simulates the player live (a PREDICTED client hears its own
+		# contact immediately, like it fires SHOOT for its predicted shots), not
+		# gated by damage authority. But unlike the deterministic impulse it must
+		# NOT re-fire when a reconciliation replay re-simulates this step, so it is
+		# gated by `not replay` (mirroring the border damage below).
+		if not replay:
+			SfxDirector.play(SfxDirector.BORDER_CONTACT)
 
 	if not replay and _is_damage_authority():
 		if first_contact:
