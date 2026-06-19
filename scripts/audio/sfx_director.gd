@@ -19,6 +19,9 @@ const BOUNCE := "bounce"
 ## feedback and the victim's "take damage" cue (one physical event).
 const HIT := "hit"
 const DEATH := "death"
+## Played when a destructible block is destroyed (health reaches zero), fired
+## from the block's destruction seam — see `DestructibleBlock`/`PhysicsBlock`.
+const BLOCK_DESTROYED := "block_destroyed"
 const ROUND_START := "round_start"
 const ROUND_END := "round_end"
 const MATCH_WIN := "match_win"
@@ -26,7 +29,7 @@ const MATCH_WIN := "match_win"
 ## Every cue this director can request. Lets mods enumerate what to author and
 ## backs the "all names distinct / non-empty" sanity test.
 const ALL_CUES: Array[String] = [
-	SHOOT, BOUNCE, HIT, DEATH, ROUND_START, ROUND_END, MATCH_WIN,
+	SHOOT, BOUNCE, HIT, DEATH, BLOCK_DESTROYED, ROUND_START, ROUND_END, MATCH_WIN,
 ]
 
 ## UI cue names requested on the UI bus, not the SFX bus (#58, deferred from #30).

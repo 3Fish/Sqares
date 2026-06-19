@@ -179,3 +179,54 @@ func _test_physics_block_made_destructible_takes_damage_and_destroys() -> void:
 	assert_true(block.is_destroyed(), "destroyed at zero health")
 	assert_true(seen[0], "destroy event emitted")
 	# queue_free() already requested; do not free() again (see note above).
+
+
+# --- Destruction SFX hook (#103) --------------------------------------------
+# Destroying a block fires the BLOCK_DESTROYED cue through SfxDirector, mirroring
+# how Player fires DEATH and Projectile fires HIT at their own trigger sites. The
+# director records the requested cue in `last_cue()` whether or not a stream is
+# registered, so these assert the hook fires (and only on actual destruction)
+# without standing up the audio playback pool.
+
+func _clear_last_cue() -> void:
+	# Isolate from cues left by earlier tests / autoload wiring.
+	SfxDirector._last_cue = ""
+
+
+func _test_destroying_a_static_block_fires_the_block_destroyed_cue() -> void:
+	_clear_last_cue()
+	var block := DestructibleBlock.new()
+	block.configure(Vector2(100, 100))
+	block.damage_block(block.health() + 100.0)  # overkill -> destroyed
+	assert_eq(SfxDirector.last_cue(), SfxDirector.BLOCK_DESTROYED, "destruction fires the block-destroyed cue")
+	# queue_free() already requested; do not free() again.
+
+
+func _test_surviving_a_hit_fires_no_destruction_cue() -> void:
+	_clear_last_cue()
+	var block := DestructibleBlock.new()
+	block.configure(Vector2(400, 400))  # large -> survives a single small hit
+	block.damage_block(25.0)
+	assert_false(block.is_destroyed(), "still standing after a partial hit")
+	assert_eq(SfxDirector.last_cue(), "", "a survivable hit fires no cue")
+	block.free()
+
+
+func _test_destroying_a_destructible_physics_block_fires_the_cue() -> void:
+	_clear_last_cue()
+	var block := PhysicsBlock.new()
+	block.configure(Vector2(80, 80))
+	block.make_destructible()
+	block.damage_block(block.health() + 100.0)  # overkill -> destroyed
+	assert_eq(SfxDirector.last_cue(), SfxDirector.BLOCK_DESTROYED, "destruction fires the block-destroyed cue")
+	# queue_free() already requested; do not free() again.
+
+
+func _test_indestructible_physics_block_fires_no_cue() -> void:
+	_clear_last_cue()
+	var block := PhysicsBlock.new()
+	block.configure(Vector2(64, 64))  # physics-only, no health
+	block.damage_block(9999.0)  # no-op on an indestructible block
+	assert_false(block.is_destroyed(), "indestructible block is never destroyed")
+	assert_eq(SfxDirector.last_cue(), "", "damaging an indestructible block fires no cue")
+	block.free()
