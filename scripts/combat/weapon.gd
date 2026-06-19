@@ -35,22 +35,51 @@ func _physics_process(delta: float) -> void:
 	_cooldown = maxf(_cooldown - delta, 0.0)
 
 
-## Fires a projectile in `direction` unless cooling down. Returns the spawned
-## projectile (so callers can replicate or track it, #27) or null when the
-## shot was refused. `net_id` tags a host-confirmed shot with the shooter
-## client's predicted-projectile id so the broadcast can echo it.
+## Fires in `direction` unless cooling down. Returns the spawned projectile (so
+## callers can replicate or track it, #27) — the first one for a multi-bullet
+## shot — or null when the shot was refused or cancelled. `net_id` tags a
+## host-confirmed shot with the shooter client's predicted-projectile id so the
+## broadcast can echo it.
+##
+## Before anything spawns, card effects get to reshape the shot through a mutable
+## `ShotSpec` (#68): they may change the bullet count, override the per-bullet
+## stats, or cancel the shot entirely. A cancelled (or zero-count) shot is a true
+## no-op — no projectile and no cooldown consumed.
 func try_fire(direction: Vector2, net_id: String = "") -> Projectile:
 	if _cooldown > 0.0 or direction == Vector2.ZERO:
 		return null
+	var spec := _build_shot_spec()
+	# Pre-shoot effects run only where the shot is adjudicated (host/local), so a
+	# client's predicted shot keeps the default single-bullet spec — mirroring how
+	# on_shoot dispatch is host-only. (A client has no attached effects yet, #82.)
+	if not NetworkManager.is_client():
+		EffectEngine.notify_before_shoot(get_parent(), self, spec, direction)
+	if not spec.fires():
+		return null
 	_cooldown = 1.0 / maxf(fire_rate, 0.1)
-	return _spawn_projectile(direction, net_id)
+	var first: Projectile = null
+	for i in spec.bullet_count:
+		# All bullets share one spec (#68). Only the first carries the net id so a
+		# host-confirmed multi-shot still echoes the client's predicted bullet.
+		var proj := _spawn_projectile(spec, direction, net_id if i == 0 else "")
+		if first == null:
+			first = proj
+	return first
 
 
-func _spawn_projectile(direction: Vector2, net_id: String) -> Projectile:
+## A ShotSpec seeded from this weapon's current stats, for effects to reshape.
+func _build_shot_spec() -> ShotSpec:
+	return ShotSpec.new(
+		damage, bullet_speed, bullet_scale, bullet_bounces,
+		bullet_homing, lifesteal, knockback_force, explosion_radius,
+	)
+
+
+func _spawn_projectile(spec: ShotSpec, direction: Vector2, net_id: String) -> Projectile:
 	var proj: Projectile = _projectile_scene.instantiate()
 	proj.setup(
-		direction, bullet_speed, damage, bullet_scale, bullet_bounces, lifesteal,
-		get_parent(), bullet_homing, knockback_force, explosion_radius,
+		direction, spec.speed, spec.damage, spec.scale, spec.bounces, spec.lifesteal,
+		get_parent(), spec.homing, spec.knockback, spec.explosion_radius,
 	)
 	proj.net_id = net_id
 	# Hit detection and damage are host-only (#27): every projectile spawned on

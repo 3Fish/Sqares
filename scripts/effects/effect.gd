@@ -30,9 +30,23 @@ func on_round_start(_ctx: EffectContext) -> void:
 	pass
 
 
+## Fired *before* the owning player's shot spawns, so an effect can reshape it:
+## `ctx.shot` is a mutable `ShotSpec` carrying the bullet count, a `cancelled`
+## flag, and the per-bullet stats. `ctx.weapon` is the firing weapon and
+## `ctx.event.direction` the aim vector. Effects fire in pickup order and the
+## same spec is threaded through each, so they **stack** — mutate `ctx.shot` in
+## place (e.g. `ctx.shot.bullet_count += 2`, `ctx.shot.damage *= 1.5`, or
+## `ctx.shot.cancelled = true`) and the next effect, and finally the weapon, see
+## the result. Cancelling (or zeroing `bullet_count`) fires nothing and does not
+## consume the weapon's cooldown.
+func on_before_shoot(_ctx: EffectContext) -> void:
+	pass
+
+
 ## Fired when the owning player fires a shot, immediately after the projectile
 ## spawns. `ctx.projectile` is the freshly spawned bullet (mutable),
 ## `ctx.weapon` the firing weapon, and `ctx.event.direction` the aim vector.
+## With a multi-bullet shot (#68) this fires once per spawned bullet.
 func on_shoot(_ctx: EffectContext) -> void:
 	pass
 

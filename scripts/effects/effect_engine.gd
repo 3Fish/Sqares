@@ -74,6 +74,16 @@ func clear() -> void:
 # Triggers (called from combat & round code)
 # ---------------------------------------------------------------------------
 
+## Notifies the engine that `player` is about to fire in `direction`, threading
+## the mutable `shot` (a `ShotSpec`) through `player`'s `on_before_shoot` effects
+## (#68). Effects run in pickup order and share the one spec, so each sees the
+## previous effect's mutations and they stack; `Weapon` then fires the final
+## spec. Called by `Weapon` before any projectile spawns.
+func notify_before_shoot(player: Object, weapon: Object, shot: Object, direction: Vector2) -> void:
+	var ctx := EffectContext.new(player, weapon, null, null, {"direction": direction}, shot)
+	_dispatch_player(player, "on_before_shoot", ctx)
+
+
 ## Notifies the engine that `player` fired `projectile` from `weapon` aiming in
 ## `direction`. Fans out to `player`'s `on_shoot` effects. Called by `Weapon`.
 func notify_shoot(player: Object, weapon: Object, projectile: Object, direction: Vector2) -> void:
