@@ -23,10 +23,12 @@ class _Recorder extends CardEffect:
 			"weapon": ctx.weapon,
 			"projectile": ctx.projectile,
 			"target": ctx.target,
+			"shot": ctx.shot,
 			"event": ctx.event.duplicate(),
 		})
 	func on_apply(ctx: EffectContext) -> void: _snap("on_apply", ctx)
 	func on_round_start(ctx: EffectContext) -> void: _snap("on_round_start", ctx)
+	func on_before_shoot(ctx: EffectContext) -> void: _snap("on_before_shoot", ctx)
 	func on_shoot(ctx: EffectContext) -> void: _snap("on_shoot", ctx)
 	func on_hit(ctx: EffectContext) -> void: _snap("on_hit", ctx)
 	func on_take_damage(ctx: EffectContext) -> void: _snap("on_take_damage", ctx)
@@ -43,6 +45,32 @@ class _ShootOnly extends RefCounted:
 ## Minimal player stand-in exposing a `weapon` property like the real Player.
 class _StubPlayer extends RefCounted:
 	var weapon: Object = null
+
+
+## A pre-shoot effect that multiplies the bullet count by a factor — used to show
+## that effects stack and that pickup order matters (multiply-then-add vs
+## add-then-multiply give different totals, #68).
+class _MultiplyBullets extends CardEffect:
+	var factor: int = 2
+	func _init(p_factor: int = 2) -> void:
+		factor = p_factor
+	func on_before_shoot(ctx: EffectContext) -> void:
+		ctx.shot.bullet_count *= factor
+
+
+## A pre-shoot effect that adds to the bullet count.
+class _AddBullets extends CardEffect:
+	var amount: int = 2
+	func _init(p_amount: int = 2) -> void:
+		amount = p_amount
+	func on_before_shoot(ctx: EffectContext) -> void:
+		ctx.shot.bullet_count += amount
+
+
+## A pre-shoot effect that cancels the shot ("hold fire while charging").
+class _CancelShot extends CardEffect:
+	func on_before_shoot(ctx: EffectContext) -> void:
+		ctx.shot.cancelled = true
 
 
 # --- Cases -----------------------------------------------------------------
@@ -216,6 +244,68 @@ func _test_remove_and_clear() -> void:
 	EffectEngine.apply_effect(player, effect)
 	EffectEngine.remove_effect(player, effect)
 	assert_false(EffectEngine.has_effects(player), "remove_effect detaches the effect")
+
+
+# --- Pre-shoot hook (#68) --------------------------------------------------
+
+func _test_notify_before_shoot_dispatches_with_spec() -> void:
+	# on_before_shoot carries the mutable ShotSpec on ctx.shot and the aim on the
+	# event, so an effect has everything it needs to reshape the shot.
+	var player := _StubPlayer.new()
+	var weapon := RefCounted.new()
+	var spec := ShotSpec.new()
+	var effect := _Recorder.new()
+	EffectEngine.apply_effect(player, effect)
+	effect.hits.clear()
+
+	EffectEngine.notify_before_shoot(player, weapon, spec, Vector2.LEFT)
+	assert_eq(effect.hits.size(), 1, "on_before_shoot fired once")
+	var h: Dictionary = effect.hits[0]
+	assert_eq(h["hook"], "on_before_shoot", "before-shoot hook fired")
+	assert_eq(h["weapon"], weapon, "context carries the weapon")
+	assert_eq(h["shot"], spec, "context carries the mutable shot spec")
+	assert_eq(h["event"]["direction"], Vector2.LEFT, "event carries the aim direction")
+
+
+func _test_before_shoot_effect_mutates_the_spec() -> void:
+	# The spec is mutated in place, so the weapon sees an effect's changes.
+	var player := _StubPlayer.new()
+	EffectEngine.apply_effect(player, _AddBullets.new(2))
+	var spec := ShotSpec.new()  # bullet_count == 1
+
+	EffectEngine.notify_before_shoot(player, null, spec, Vector2.RIGHT)
+	assert_eq(spec.bullet_count, 3, "the +2 effect raised the bullet count to 3")
+	assert_true(spec.fires(), "the shot still fires")
+
+
+func _test_before_shoot_effects_stack_in_pickup_order() -> void:
+	# The maintainer's worked example (#68): a "x2" effect picked before a "+2"
+	# effect yields 4 bullets; the reverse pickup order yields 6. Effects are
+	# dispatched in pickup (attachment) order and share one spec, so each sees the
+	# previous one's mutation.
+	var multiply_first := _StubPlayer.new()
+	EffectEngine.apply_effect(multiply_first, _MultiplyBullets.new(2))  # picked first
+	EffectEngine.apply_effect(multiply_first, _AddBullets.new(2))       # picked second
+	var spec_a := ShotSpec.new()  # 1
+	EffectEngine.notify_before_shoot(multiply_first, null, spec_a, Vector2.UP)
+	assert_eq(spec_a.bullet_count, 4, "x2 then +2: (1*2)+2 == 4 bullets")
+
+	var add_first := _StubPlayer.new()
+	EffectEngine.apply_effect(add_first, _AddBullets.new(2))            # picked first
+	EffectEngine.apply_effect(add_first, _MultiplyBullets.new(2))       # picked second
+	var spec_b := ShotSpec.new()  # 1
+	EffectEngine.notify_before_shoot(add_first, null, spec_b, Vector2.UP)
+	assert_eq(spec_b.bullet_count, 6, "+2 then x2: (1+2)*2 == 6 bullets")
+
+
+func _test_before_shoot_can_cancel_the_shot() -> void:
+	var player := _StubPlayer.new()
+	EffectEngine.apply_effect(player, _CancelShot.new())
+	var spec := ShotSpec.new()
+
+	EffectEngine.notify_before_shoot(player, null, spec, Vector2.DOWN)
+	assert_true(spec.cancelled, "the effect cancelled the shot")
+	assert_false(spec.fires(), "a cancelled spec fires nothing")
 
 	EffectEngine.apply_effect(player, _Recorder.new())
 	EffectEngine.clear_player(player)

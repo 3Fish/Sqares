@@ -22,6 +22,11 @@ var projectile: Object = null
 ## What was struck, for `on_hit`.
 var target: Object = null
 
+## The mutable `ShotSpec` for `on_before_shoot` — the shot an effect may reshape
+## (bullet count, cancel, per-bullet stats) before the weapon fires. `null` for
+## every other hook.
+var shot: Object = null
+
 ## Back-reference to the `CardEffect` currently being invoked. Set by the engine
 ## per-effect just before each hook call.
 var effect: CardEffect = null
@@ -36,12 +41,14 @@ func _init(
 	p_projectile: Object = null,
 	p_target: Object = null,
 	p_event: Dictionary = {},
+	p_shot: Object = null,
 ) -> void:
 	player = p_player
 	weapon = p_weapon
 	projectile = p_projectile
 	target = p_target
 	event = p_event
+	shot = p_shot
 
 
 ## Reads a value from the `event` payload, returning `fallback` if absent.

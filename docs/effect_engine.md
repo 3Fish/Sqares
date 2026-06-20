@@ -25,6 +25,7 @@ by default.
 | ----------------- | ------------------------------------------------------ | ---------------------------------------------- |
 | `on_apply`        | the effect is first attached to a player (card picked) | `player`                                       |
 | `on_round_start`  | every round begins, while the effect is active         | `player`, `event.round`                        |
+| `on_before_shoot` | the owning player is about to fire, **before** spawning | `player`, `weapon`, `shot` (mutable `ShotSpec`), `event.direction` |
 | `on_shoot`        | the owning player fires, just after the bullet spawns  | `player`, `weapon`, `projectile`, `event.direction` |
 | `on_hit`          | one of the player's projectiles strikes a target       | `player`, `projectile`, `target`, `event.damage`    |
 | `on_take_damage`  | the owning player loses HP (the victim side of a hit)  | `player` (victim), `target` (attacker), `event.damage` |
@@ -32,6 +33,33 @@ by default.
 Every hook receives one `EffectContext` argument. Unused fields are `null`;
 `event` is a small `Dictionary` of hook-specific scalars (read it with
 `ctx.get_event(key, fallback)`).
+
+### Reshaping a shot before it fires (`on_before_shoot`)
+
+`on_before_shoot` runs **before** any projectile spawns and hands you a mutable
+`ShotSpec` on `ctx.shot`. Mutate it in place to change the shot:
+
+- `ctx.shot.bullet_count` — how many identical bullets fire (e.g. `+= 2`, `*= 2`).
+- `ctx.shot.cancelled = true` — fire nothing this attempt (a true no-op: the
+  weapon's cooldown is **not** consumed, so "hold fire while charging" can fire
+  the instant it stops cancelling). Driving `bullet_count` to `0` does the same.
+- `ctx.shot.damage` / `speed` / `scale` / `bounces` / `homing` / `lifesteal` /
+  `knockback` / `explosion_radius` — per-bullet stat overrides applied before the
+  bullet(s) spawn (vs. `on_shoot`, which mutates an *already-spawned* bullet).
+
+All bullets in a shot share one spec — there is no per-bullet variation yet.
+
+Effects **stack in pickup order**: the base game's effects run first, then each
+picked card in the order it was selected, and they all share the one spec, so
+each effect sees the previous one's mutations. Order therefore matters — a
+"bullets ×2" effect picked before a "bullets +2" effect yields `(1×2)+2 = 4`
+bullets, while the reverse pickup order yields `(1+2)×2 = 6`.
+
+```gdscript
+class TripleShot extends CardEffect:
+    func on_before_shoot(ctx: EffectContext) -> void:
+        ctx.shot.bullet_count += 2  # fire two extra bullets
+```
 
 ## Writing an effect
 
@@ -72,7 +100,9 @@ effect for all later hooks.
 You normally do **not** call the engine yourself — the base game wires the
 triggers for you:
 
-- `Weapon` calls `EffectEngine.notify_shoot(...)` after spawning each bullet.
+- `Weapon` calls `EffectEngine.notify_before_shoot(...)` with a mutable `ShotSpec`
+  *before* spawning, then fires the final spec, then calls
+  `EffectEngine.notify_shoot(...)` after spawning each bullet.
 - `Projectile` calls `EffectEngine.notify_hit(...)` on impact.
 - `Player` forwards `Health.damaged` to `EffectEngine.notify_take_damage(...)` so a
   victim's `on_take_damage` fires (only when HP is actually lost — a shield-absorbed
