@@ -13,3 +13,17 @@ func _test_setup_match_tracks_every_player() -> void:
 			if GameManager.win_counts.get(i, -1) != 0:
 				all_zero = false
 		assert_true(all_zero, "setup_match(%d) zeroes every win count" % count)
+
+
+## setup_match carries the per-match friendly-fire rule (#62): it defaults to on
+## so existing callers keep the historical behaviour, and an explicit value is
+## stored for the hit adjudication to read.
+func _test_setup_match_sets_friendly_fire() -> void:
+	GameManager.setup_match("crossroads", 2, 5)
+	assert_true(GameManager.friendly_fire, "friendly fire defaults to on when unspecified")
+
+	GameManager.setup_match("crossroads", 2, 5, {0: 0, 1: 0}, &"teams", false)
+	assert_false(GameManager.friendly_fire, "friendly fire reflects the value passed to setup_match")
+
+	GameManager.setup_match("crossroads", 2, 5, {0: 0, 1: 1}, &"teams", true)
+	assert_true(GameManager.friendly_fire, "friendly fire can be re-enabled by a later setup")
