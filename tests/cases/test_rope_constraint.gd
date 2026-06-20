@@ -203,3 +203,70 @@ func _test_world_anchor_endpoint_never_severs() -> void:
 	assert_false(rope.is_severed(), "anchors never sever")
 	assert_true(rope.is_decorative(), "anchor <-> anchor rope is decorative")
 	arena.free()
+
+
+# --- Sever SFX hook (#104, deferred from #98) -------------------------------
+# Severing a rope fires the ROPE_SEVERED cue through SfxDirector — a discrete
+# "the rope snaps" event, distinct from the endpoint block's own destruction —
+# mirroring how Player fires DEATH and Weapon fires SHOOT at their own trigger
+# sites. Like every cue it warns-and-no-ops until a mod registers a stream (no
+# audio ships, #47), so these assert the hook fires (and only on a genuine, first
+# sever) via SfxDirector.last_cue() without standing up the audio playback pool.
+
+func _clear_last_cue() -> void:
+	# Isolate from cues left by earlier tests / autoload wiring.
+	SfxDirector._last_cue = ""
+
+
+func _test_severing_a_rope_fires_the_rope_severed_cue() -> void:
+	var data: ArenaData = ArenaDataScript.new()
+	# A physics + destructible block hung from a mid-air anchor.
+	data.add_platform(Vector2(0, 0), Vector2(64, 64), Color.WHITE, true, true)
+	data.add_rope(-1, Vector2(0, -200), 0, Vector2.ZERO)
+	var arena := ArenaBuilder.build(data)
+	var rope := arena.get_node("Rope0") as Rope
+	rope.resolve()
+	var block := arena.get_node("Platform0") as PhysicsBlock
+	_clear_last_cue()
+	# Overkill the block: it emits `destroyed`, the rope consumes it and snaps.
+	block.damage_block(block.health() + 100.0)
+	assert_true(rope.is_severed(), "destroying the endpoint severs the rope")
+	assert_eq(SfxDirector.last_cue(), SfxDirector.ROPE_SEVERED, "severing fires the rope-severed cue")
+	arena.queue_free()
+
+
+func _test_an_intact_rope_fires_no_sever_cue() -> void:
+	var data: ArenaData = ArenaDataScript.new()
+	# Anchor <-> anchor: not destructible, never severs.
+	data.add_platform(Vector2(0, 0), Vector2(64, 64), Color.WHITE, true, false)
+	data.add_rope(-1, Vector2(0, -200), -1, Vector2(0, 200))
+	var arena := ArenaBuilder.build(data)
+	var rope := arena.get_node("Rope0") as Rope
+	rope.resolve()
+	_clear_last_cue()
+	# Nothing destroys an endpoint, so no sever and no cue.
+	assert_false(rope.is_severed(), "an intact rope has not severed")
+	assert_eq(SfxDirector.last_cue(), "", "no sever, no cue")
+	arena.free()
+
+
+func _test_a_second_endpoint_destruction_does_not_refire_the_cue() -> void:
+	var data: ArenaData = ArenaDataScript.new()
+	# A block <-> block rope where BOTH endpoints are physics + destructible, so
+	# this seam is connected to both `destroyed` signals.
+	data.add_platform(Vector2(-50, 0), Vector2(64, 64), Color.WHITE, true, true)  # block 0
+	data.add_platform(Vector2(50, 0), Vector2(64, 64), Color.WHITE, true, true)   # block 1
+	data.add_rope(0, Vector2.ZERO, 1, Vector2.ZERO)
+	var arena := ArenaBuilder.build(data)
+	var rope := arena.get_node("Rope0") as Rope
+	rope.resolve()
+	var block0 := arena.get_node("Platform0") as PhysicsBlock
+	var block1 := arena.get_node("Platform1") as PhysicsBlock
+	_clear_last_cue()
+	block0.damage_block(block0.health() + 100.0)  # first sever fires the cue
+	assert_eq(SfxDirector.last_cue(), SfxDirector.ROPE_SEVERED, "first endpoint destruction snaps the rope")
+	_clear_last_cue()
+	block1.damage_block(block1.health() + 100.0)  # already severed -> no re-fire
+	assert_true(rope.is_severed(), "rope stays severed")
+	assert_eq(SfxDirector.last_cue(), "", "the already-snapped rope does not re-fire the cue")
+	arena.queue_free()

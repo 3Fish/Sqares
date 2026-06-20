@@ -182,4 +182,15 @@ func _connect_sever(node: Node2D) -> void:
 
 
 func _on_endpoint_destroyed(_block: Object) -> void:
+	# A block ↔ block rope connects this seam to both destructible endpoints, so
+	# guard against re-severing (and re-firing the cue) when the second endpoint is
+	# later destroyed: the rope only snaps once.
+	if _severed:
+		return
 	_severed = true
+	# A discrete "the rope snaps" event — distinct from the endpoint block's own
+	# destruction. Local feedback fired at the sever seam, mirroring how Weapon
+	# fires SHOOT, Player fires DEATH, and Projectile fires HIT/BOUNCE at their own
+	# trigger sites. Warns-and-no-ops until a mod registers a stream (no audio ships
+	# in base game, #47), so no sound-design choice is introduced here.
+	SfxDirector.play(SfxDirector.ROPE_SEVERED)
