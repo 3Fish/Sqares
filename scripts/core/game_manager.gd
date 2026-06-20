@@ -14,6 +14,13 @@ var mode_id: StringName = &"ffa"
 var win_counts: Dictionary[int, int] = {}
 # player_id (int) -> team_id (int)
 var team_of: Dictionary[int, int] = {}
+## Whether teammates (and the shooter itself on a bounce-back) can damage each
+## other. On by default — the historical behaviour, and the only behaviour in
+## Free-for-all where every distinct player is an enemy. A Teams match may turn
+## it off (set through `setup_match` / `MatchDirector.friendly_fire`), at which
+## point friendly shots deal no damage and are consumed (#62). The hit
+## adjudication reads this; the per-shot rule lives in `Projectile.is_hostile`.
+var friendly_fire: bool = true
 
 signal state_changed(new_state: State)
 signal round_started(round_num: int)
@@ -23,12 +30,16 @@ signal match_ended(winner_team_id: int)
 
 ## Initialises a match. `team_assignment` maps player_id -> team_id; when empty
 ## the match is Free-for-all (each player is their own team). Win counts are
-## tracked per distinct team, so FFA naturally tracks per player.
+## tracked per distinct team, so FFA naturally tracks per player. `p_friendly_fire`
+## sets the per-match friendly-fire rule (#62); it defaults to on, so callers that
+## don't care keep the historical behaviour.
 func setup_match(arena_id: String, player_count: int, wins_needed: int = 5,
-		team_assignment: Dictionary = {}, mode: StringName = &"ffa") -> void:
+		team_assignment: Dictionary = {}, mode: StringName = &"ffa",
+		p_friendly_fire: bool = true) -> void:
 	current_arena_id = arena_id
 	rounds_to_win = wins_needed
 	mode_id = mode
+	friendly_fire = p_friendly_fire
 	round_number = 0
 	win_counts.clear()
 	team_of.clear()

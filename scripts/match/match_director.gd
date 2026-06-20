@@ -31,6 +31,12 @@ static var pending_arena_id: String = ""
 ## match-setup screen will let players pick this; for now it is configurable
 ## here, mirroring how `player_count` is exposed.
 @export var game_mode: String = "ffa"
+## Whether teammates can damage each other (#62). On by default — and moot in
+## Free-for-all, where every distinct player is an enemy. Turning it off in a
+## Teams match makes friendly shots (including the shooter's own bounce-back)
+## consume harmlessly instead of dealing damage. Exposed here as an export until
+## the deferred match-setup screen surfaces it, mirroring `game_mode`.
+@export var friendly_fire: bool = true
 
 @onready var _arena_container: Node2D  = $"../ArenaContainer"
 @onready var _players_container: Node2D = $"../PlayersContainer"
@@ -75,7 +81,7 @@ func _ready() -> void:
 ## Builds the team assignment from the active mode and hands it to GameManager.
 func _begin_match() -> void:
 	var teams := _mode.assign_teams(player_count)
-	GameManager.setup_match(arena_id, player_count, wins_needed, teams, _mode.id)
+	GameManager.setup_match(arena_id, player_count, wins_needed, teams, _mode.id, friendly_fire)
 	if NetworkManager.is_host():
 		# Agree the match RNG up front so synced draws/rolls (#24) derive the
 		# same streams on every peer — the seed transport #64/#66 parked here.

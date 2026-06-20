@@ -94,6 +94,12 @@ func _physics_process(delta: float) -> void:
 			SfxDirector.play(SfxDirector.HIT)
 			queue_free()
 			return
+		if not _may_damage(collider):
+			# Friendly fire is off and this is a teammate (or the shooter itself
+			# on a bounce-back): the shot deals no damage and is consumed — no
+			# knockback, explosion, lifesteal, HIT cue, or effect dispatch (#62).
+			queue_free()
+			return
 		collider.take_damage(damage, shooter if is_instance_valid(shooter) else null)
 		if knockback_force > 0.0 and collider.has_method("apply_knockback"):
 			collider.apply_knockback(velocity.normalized() * knockback_force)
@@ -153,9 +159,14 @@ static func compute_homing_velocity(
 ## excluding the shooter (no self-damage) and the directly-hit target (which has
 ## already taken the impact damage), and additionally damages every destructible
 ## block (#97) in the blast (#103). Splash victims take the full bullet `damage`;
-## blast falloff and team/friendly-fire filtering are deferred tuning (see #26).
+## blast falloff is deferred tuning (see #26). With friendly fire off the
+## shooter's teammates are dropped from the splash too, so an explosion only
+## harms enemies (#62); blocks are never team-filtered.
 func _detonate(center: Vector2, direct_target: Node) -> void:
-	for node in get_tree().get_nodes_in_group(TARGET_GROUP):
+	var victims := filter_hostile(
+		get_tree().get_nodes_in_group(TARGET_GROUP),
+		combatant_id(shooter), GameManager.friendly_fire, GameManager.team_of)
+	for node in victims:
 		if node == shooter or node == direct_target or not (node is Node2D):
 			continue
 		if not node.has_method("take_damage"):
@@ -200,9 +211,15 @@ static func is_in_blast_radius(center: Vector2, point: Vector2, radius: float) -
 	return center.distance_squared_to(point) <= radius * radius
 
 
-## Nearest living combatant (group member) other than the shooter, or null.
+## Nearest living *enemy* combatant other than the shooter, or null. With
+## friendly fire off the shooter's teammates are dropped first, so a homing
+## bullet only steers toward enemies (#62); with it on every group member is a
+## candidate, the historical behaviour.
 func _find_nearest_target() -> Node2D:
-	return select_nearest_target(get_tree().get_nodes_in_group(TARGET_GROUP), global_position, shooter)
+	var candidates := filter_hostile(
+		get_tree().get_nodes_in_group(TARGET_GROUP),
+		combatant_id(shooter), GameManager.friendly_fire, GameManager.team_of)
+	return select_nearest_target(candidates, global_position, shooter)
 
 
 ## Nearest `Node2D` in `candidates` to `origin`, excluding `exclude` (the
@@ -219,3 +236,57 @@ static func select_nearest_target(candidates: Array, origin: Vector2, exclude: N
 			best = d
 			nearest = node
 	return nearest
+
+
+# --- Friendly-fire / team target filtering (#62) ----------------------------
+# A shot may damage a target only when they are hostile. With friendly fire on
+# (the default, and the only setting that matters in Free-for-all) every target
+# is hostile, so the historical behaviour is unchanged. With it off, a target on
+# the shooter's own team — including the shooter itself on a bounce-back — is
+# friendly: the direct hit is consumed, and homing / explosion splash skip it.
+# The rule is a pure static so it is unit-tested without a scene; the live combat
+# paths feed it `GameManager.friendly_fire` and `GameManager.team_of`.
+
+## Whether a shot from `shooter_id` may damage a combatant with `target_id`.
+## With `ff` true every target is hostile. With it off, sharing a team makes them
+## friendly (a self-hit, `shooter_id == target_id`, is therefore friendly too).
+## `team_map` is player_id -> team_id; an id absent from it is its own team, so
+## distinct Free-for-all players stay mutual enemies. A `target_id` of -1 (a
+## non-combatant such as a non-player target) is always hostile.
+static func is_hostile(shooter_id: int, target_id: int, ff: bool, team_map: Dictionary) -> bool:
+	if ff or shooter_id < 0 or target_id < 0:
+		return true
+	return team_map.get(shooter_id, shooter_id) != team_map.get(target_id, target_id)
+
+
+## The `player_id` of a combatant node, or -1 when it exposes none (a non-player
+## target or a lightweight test stub). Such a node is treated as always hostile.
+static func combatant_id(node: Object) -> int:
+	if node == null or not is_instance_valid(node):
+		return -1
+	var pid: Variant = node.get("player_id")
+	return int(pid) if pid != null else -1
+
+
+## The subset of `candidates` the shooter may target under the friendly-fire
+## rule — shared by homing target selection and explosion splash. With `ff` true
+## (or the shooter lacking an id) every candidate passes; with it off, the
+## shooter's teammates are dropped while enemies and non-combatants are kept.
+## Pure so the filter is unit-tested without a scene.
+static func filter_hostile(candidates: Array, shooter_id: int, ff: bool, team_map: Dictionary) -> Array:
+	if ff or shooter_id < 0:
+		return candidates
+	var out: Array = []
+	for node in candidates:
+		if is_hostile(shooter_id, combatant_id(node), ff, team_map):
+			out.append(node)
+	return out
+
+
+## Whether this bullet may deal damage to `target`, reading the live friendly-fire
+## rule and team map. Used by the direct-hit path to decide between dealing damage
+## and consuming a friendly shot.
+func _may_damage(target: Object) -> bool:
+	return is_hostile(
+		combatant_id(shooter), combatant_id(target),
+		GameManager.friendly_fire, GameManager.team_of)
