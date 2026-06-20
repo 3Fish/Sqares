@@ -266,7 +266,11 @@ func _test_a_second_endpoint_destruction_does_not_refire_the_cue() -> void:
 	block0.damage_block(block0.health() + 100.0)  # first sever fires the cue
 	assert_eq(SfxDirector.last_cue(), SfxDirector.ROPE_SEVERED, "first endpoint destruction snaps the rope")
 	_clear_last_cue()
-	block1.damage_block(block1.health() + 100.0)  # already severed -> no re-fire
+	block1.damage_block(block1.health() + 100.0)  # already severed -> no rope re-fire
 	assert_true(rope.is_severed(), "rope stays severed")
-	assert_eq(SfxDirector.last_cue(), "", "the already-snapped rope does not re-fire the cue")
+	# Destroying the second endpoint fires that block's own BLOCK_DESTROYED cue,
+	# but the already-snapped rope must NOT re-fire its sever cue (rope.gd guards
+	# on `_severed`). So the last cue is the block's, never ROPE_SEVERED again.
+	assert_eq(SfxDirector.last_cue(), SfxDirector.BLOCK_DESTROYED, "the second endpoint fires only its own block-destroyed cue")
+	assert_false(SfxDirector.last_cue() == SfxDirector.ROPE_SEVERED, "the already-snapped rope does not re-fire the sever cue")
 	arena.queue_free()
