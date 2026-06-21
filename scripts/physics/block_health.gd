@@ -4,8 +4,9 @@ extends RefCounted
 ## Damage bookkeeping for a destructible platform block (#97, from #85).
 ##
 ## A destructible block's health is derived from its size through the shared
-## [PhysicsModel] — `health = area * density`, the same `mass = size * density`
-## definition reused for block mass (#96), so the formula is never duplicated.
+## [PhysicsModel] — `health = area * health_density`, using the same area×density
+## shape as block mass (#96) but on its own `BLOCK_HEALTH_DENSITY` so durability is
+## tuned independently of push mass (#103 A2). The formula still lives in one place.
 ## This object holds only the per-block health state and the destroy threshold;
 ## the concrete block nodes ([DestructibleBlock] and a destructible [PhysicsBlock])
 ## own one and forward bullet damage into it. Pure (no scene-tree dependency) so

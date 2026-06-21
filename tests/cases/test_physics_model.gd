@@ -58,15 +58,63 @@ func _test_block_mass_is_area_times_density() -> void:
 	assert_almost_eq(Model.block_mass(size), expected, "area * density")
 
 
-func _test_block_health_reuses_the_mass_formula() -> void:
-	# The whole point of #85's "defined once": block health and mass are the
-	# same area*density quantity, not two independent derivations.
+func _test_block_health_is_area_times_health_density() -> void:
+	# Health routes through the shared area*density formula, but on its own
+	# BLOCK_HEALTH_DENSITY (decoupled from mass, #103 A2).
 	var size := Vector2(120, 48)
-	assert_almost_eq(Model.block_health(size), Model.block_mass(size), "block health == mass")
+	assert_almost_eq(
+		Model.block_health(size),
+		Model.mass_from_size(Model.rect_area(size), Model.BLOCK_HEALTH_DENSITY),
+		"block health routes through mass_from_size on the health density"
+	)
+
+
+func _test_block_health_is_decoupled_from_mass() -> void:
+	# Durability no longer rides the push-mass density: the two densities differ,
+	# so a block's health and its mass are independent quantities (#103 A2).
+	assert_true(
+		Model.BLOCK_HEALTH_DENSITY != Model.BLOCK_DENSITY,
+		"health density is tuned separately from mass density"
+	)
+	var size := Vector2(120, 48)
+	assert_true(
+		Model.block_health(size) != Model.block_mass(size),
+		"block health is not the same quantity as block mass"
+	)
+
+
+func _test_player_sized_block_dies_to_one_default_shot() -> void:
+	# Maintainer's target feel (#103 A2): a block roughly a standard player's
+	# footprint (the 32x32 player_size) is destroyed by a single default shot.
+	const PLAYER_FOOTPRINT := Vector2(32, 32)
+	const DEFAULT_DAMAGE := 25.0  # base-game "damage" stat
+	var hp := Model.block_health(PLAYER_FOOTPRINT)
+	assert_true(hp >= 18.0 and hp <= 22.0, "a player-sized block has ~20 health")
+	assert_true(hp <= DEFAULT_DAMAGE, "one default 25-damage shot destroys it")
+
+
+func _test_double_area_block_survives_one_shot_but_not_two() -> void:
+	# A block with twice the area has ~40 health: it survives one default shot
+	# and falls to the second (#103 A2).
+	const DEFAULT_DAMAGE := 25.0
+	var hp := Model.block_health(Vector2(64, 32))  # twice the 32x32 area
+	assert_true(hp > DEFAULT_DAMAGE, "a double-area block survives one shot")
+	assert_true(hp <= 2.0 * DEFAULT_DAMAGE, "but two default shots destroy it")
+
+
+func _test_block_health_scales_linearly_with_area() -> void:
+	var single := Model.block_health(Vector2(32, 32))
+	var double := Model.block_health(Vector2(64, 32))  # 2x the area
+	assert_almost_eq(double, 2.0 * single, "doubling the area doubles the health")
+
+
+func _test_block_mass_is_unchanged_by_health_decouple() -> void:
+	# The decouple only touched health; mass still uses BLOCK_DENSITY.
+	var size := Vector2(120, 48)
 	assert_almost_eq(
 		Model.block_mass(size),
 		Model.mass_from_size(Model.rect_area(size), Model.BLOCK_DENSITY),
-		"block mass routes through mass_from_size"
+		"block mass still routes through the mass density"
 	)
 
 
