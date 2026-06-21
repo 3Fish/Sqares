@@ -15,6 +15,24 @@ func _test_default_spec_fires_one_bullet() -> void:
 	assert_true(spec.fires(), "a default spec fires")
 
 
+func _test_default_ammo_cost_and_delay() -> void:
+	var spec := ShotSpec.new()
+	assert_eq(spec.ammo_cost, 1, "a shot costs one round by default (#113)")
+	assert_almost_eq(spec.delay, 0.0, "a shot has no delay by default (#113)")
+
+
+func _test_effects_can_mutate_ammo_cost_and_delay() -> void:
+	# The effect chain reshapes these like any other shot attribute, in pickup
+	# order: each step reads the running value and writes back (#113).
+	var spec := ShotSpec.new()
+	spec.ammo_cost = spec.ammo_cost + 2  # a "+2 consumption" effect
+	spec.ammo_cost = spec.ammo_cost * 2  # then a "×2 consumption" effect
+	assert_eq(spec.ammo_cost, 6, "ammo_cost stacks through the chain in order")
+	spec.delay = spec.delay + 0.25
+	spec.delay = spec.delay + 0.1
+	assert_almost_eq(spec.delay, 0.35, "delay accumulates additively across effects")
+
+
 func _test_spec_carries_per_bullet_stats() -> void:
 	var spec := ShotSpec.new(40.0, 1200.0, 2.0, 3, 0.5, 0.25, 100.0, 64.0)
 	assert_almost_eq(spec.damage, 40.0, "damage carried")

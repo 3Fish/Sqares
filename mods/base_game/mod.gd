@@ -53,6 +53,14 @@ func _register_base_stats() -> void:
 	StatRegistry.register("bullet_homing",   0.0)   # 0=none, 1=full
 	StatRegistry.register("lifesteal",       0.0)   # HP per kill
 
+	# Ammo / reload (#113). The weapon holds a magazine of discrete rounds; firing
+	# draws it down by the shot's ammo_cost and an over-cost shot is denied. The
+	# magazine snaps back to full once the player has not fired for `reload_time`
+	# seconds (instant refill — the stat is the idle duration, so smaller reloads
+	# sooner). Both are card-tunable.
+	StatRegistry.register("magazine_size",   3.0)   # rounds per magazine
+	StatRegistry.register("reload_time",     1.0)   # idle seconds before a full reload
+
 	# Defensive stats
 	StatRegistry.register("shield_charges",  0.0)
 
