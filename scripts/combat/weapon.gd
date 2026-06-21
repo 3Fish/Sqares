@@ -57,9 +57,16 @@ func reset_ammo() -> void:
 	_pending.clear()
 
 
-## Rounds currently in the magazine. Exposed for a future ammo HUD (#113 A4).
+## Rounds currently in the magazine. Exposed for the ammo HUD (#113 A4 / #116).
 func get_ammo() -> int:
 	return _ammo
+
+
+## Idle-reload progress in [0, 1] for the ammo HUD (#116): how far the magazine
+## has refilled toward full since the last shot. A full magazine reports 1.0.
+## Delegates to the pure `AmmoModel.reload_progress` so the maths is testable.
+func get_reload_progress() -> float:
+	return AmmoModel.reload_progress(_ammo, magazine_size, _idle_time, reload_time)
 
 
 ## Cancels every delayed shot still waiting to spawn (#113): a released trigger,

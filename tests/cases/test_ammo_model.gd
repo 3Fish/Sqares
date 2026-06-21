@@ -62,3 +62,27 @@ func _test_full_magazine_is_left_alone() -> void:
 
 func _test_non_positive_reload_time_is_always_reloaded() -> void:
 	assert_eq(AmmoModel.reloaded(0, 3, 0.0, 0.0), 3, "a zero reload_time reloads immediately")
+
+
+# --- reload_progress (ammo HUD, #116) ----------------------------------------
+
+func _test_reload_progress_is_the_idle_fraction() -> void:
+	assert_almost_eq(AmmoModel.reload_progress(1, 3, 0.0, 1.0), 0.0, "just fired: no progress")
+	assert_almost_eq(AmmoModel.reload_progress(1, 3, 0.5, 1.0), 0.5, "halfway through the idle window")
+	assert_almost_eq(AmmoModel.reload_progress(0, 3, 0.75, 1.0), 0.75, "three-quarters reloaded")
+
+
+func _test_reload_progress_clamps_to_one_at_the_threshold() -> void:
+	# Progress never overshoots 1.0 even when idle past reload_time (the refill
+	# itself happens in `reloaded`).
+	assert_almost_eq(AmmoModel.reload_progress(1, 3, 1.0, 1.0), 1.0, "idle exactly reload_time is full")
+	assert_almost_eq(AmmoModel.reload_progress(1, 3, 5.0, 1.0), 1.0, "idle past reload_time still clamps")
+
+
+func _test_reload_progress_full_magazine_reports_one() -> void:
+	assert_almost_eq(AmmoModel.reload_progress(3, 3, 0.0, 1.0), 1.0, "a full magazine is fully loaded")
+	assert_almost_eq(AmmoModel.reload_progress(4, 3, 0.0, 1.0), 1.0, "an over-full magazine reports full")
+
+
+func _test_reload_progress_non_positive_reload_time_reports_one() -> void:
+	assert_almost_eq(AmmoModel.reload_progress(0, 3, 0.0, 0.0), 1.0, "a zero reload_time is always loaded")

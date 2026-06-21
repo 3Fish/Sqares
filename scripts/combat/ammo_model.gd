@@ -41,3 +41,14 @@ static func reloaded(current_ammo: int, magazine_size: int, idle_time: float, re
 	if idle_time >= reload_time:
 		return magazine_size
 	return current_ammo
+
+
+## How far the idle-reload timer has advanced toward a full magazine, in [0, 1],
+## for the ammo HUD (#116). A full magazine — or a non-positive `reload_time`,
+## treated as "always reloaded" to match `reloaded` — reports 1.0; otherwise the
+## idle fraction toward `reload_time`, clamped. Pure, so the readout maths is
+## unit-tested without a scene tree.
+static func reload_progress(current_ammo: int, magazine_size: int, idle_time: float, reload_time: float) -> float:
+	if current_ammo >= magazine_size or reload_time <= 0.0:
+		return 1.0
+	return clampf(idle_time / reload_time, 0.0, 1.0)

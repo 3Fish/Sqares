@@ -15,6 +15,7 @@ var _round_label: Label
 var _center_label: Label
 var _hp_labels: Dictionary = {}    # player_id -> Label
 var _win_labels: Dictionary = {}   # player_id -> Label
+var _ammo_labels: Dictionary = {}  # player_id -> Label
 var _players: Dictionary = {}      # player_id -> Player
 
 
@@ -38,6 +39,11 @@ func _process(_delta: float) -> void:
 		var hp_int := roundi(p.health.current_hp)
 		_hp_labels[id].text = "P%d  %d HP" % [id + 1, hp_int]
 		_hp_labels[id].modulate.a = lerpf(0.6, 1.0, pct)
+		# Ammo: rounds remaining as pips, plus an idle-reload indicator (#116).
+		if _ammo_labels.has(id) and is_instance_valid(p.weapon):
+			_ammo_labels[id].text = ammo_readout(
+				p.weapon.get_ammo(), p.weapon.magazine_size, p.weapon.get_reload_progress()
+			)
 
 
 func register_player(player_id: int, player: Player) -> void:
@@ -45,10 +51,11 @@ func register_player(player_id: int, player: Player) -> void:
 	if _hp_labels.has(player_id):
 		return
 	# Even ids go top-left, odd ids top-right; each extra player on a side stacks
-	# downward so 3- and 4-player readouts don't overlap P1 / P2.
+	# downward so 3- and 4-player readouts don't overlap P1 / P2. The row pitch
+	# leaves room for the HP / wins / ammo trio (#116).
 	var on_left := player_id % 2 == 0
 	var row := player_id / 2
-	var y := 16.0 + float(row) * 56.0
+	var y := 16.0 + float(row) * 78.0
 	var pos := Vector2(16, y) if on_left else Vector2(1064, y)
 	var align := HORIZONTAL_ALIGNMENT_LEFT if on_left else HORIZONTAL_ALIGNMENT_RIGHT
 	var color: Color = P_COLORS[mini(player_id, P_COLORS.size() - 1)]
@@ -63,6 +70,14 @@ func register_player(player_id: int, player: Player) -> void:
 	wins.horizontal_alignment = align
 	wins.add_theme_color_override("font_color", color)
 	_win_labels[player_id] = wins
+
+	# Right-side readouts are right-aligned in a wider box so the ammo pips +
+	# reload indicator sit flush with HP / wins.
+	var ammo_pos := pos + Vector2(0, 50) if on_left else pos + Vector2(-40, 50)
+	var ammo := _label(ammo_pos, Vector2(240, 20), 14)
+	ammo.horizontal_alignment = align
+	ammo.add_theme_color_override("font_color", color)
+	_ammo_labels[player_id] = ammo
 
 
 func set_round(round_num: int) -> void:
@@ -89,6 +104,21 @@ func update_wins() -> void:
 
 
 # ---------------------------------------------------------------------------
+
+## Builds the per-player ammo readout (#116): one filled pip per round still in
+## the magazine, an empty pip per spent round, so the magazine size and rounds
+## remaining read at a glance — the same pip idiom the win tally uses. While the
+## magazine is refilling (not yet full), an idle-reload indicator shows how far
+## along the reload is. Pure (no scene state) so it is unit-tested directly.
+static func ammo_readout(current: int, capacity: int, reload_progress: float) -> String:
+	var cap := maxi(capacity, 0)
+	var rounds := clampi(current, 0, cap)
+	var pips := "▮".repeat(rounds) + "▯".repeat(cap - rounds)
+	if current >= cap:
+		return pips
+	var pct := clampi(roundi(reload_progress * 100.0), 0, 100)
+	return "%s  ↻ %d%%" % [pips, pct]
+
 
 func _label(pos: Vector2, sz: Vector2, font_size: int) -> Label:
 	var lbl := Label.new()
