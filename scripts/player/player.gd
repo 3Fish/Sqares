@@ -87,6 +87,9 @@ func _ready() -> void:
 	_base_gravity = ProjectSettings.get_setting("physics/2d/default_gravity", 980.0)
 	stats = PlayerStats.new(StatRegistry.get_defaults())
 	_sync_stats(true)
+	# Every round spawns a fresh player node, so this is the round-start seam: each
+	# player begins the round with a full magazine (#113).
+	weapon.reset_ammo()
 	health.died.connect(_on_died)
 	health.damaged.connect(_on_damaged)
 	add_to_group(Projectile.TARGET_GROUP)
@@ -313,6 +316,8 @@ func _is_damage_authority() -> bool:
 
 func _handle_shoot(input: NetPlayerInput) -> void:
 	if not input.shoot:
+		# Releasing the trigger abandons any delayed shot still charging (#113).
+		weapon.clear_pending()
 		return
 	match net_role:
 		NetRole.PREDICTED:
@@ -409,6 +414,8 @@ func _on_damaged(amount: float, attacker: Node) -> void:
 func _on_died(killer: Node) -> void:
 	_dead = true
 	velocity = Vector2.ZERO
+	# A pending delayed shot doesn't fire from a corpse (#113).
+	weapon.clear_pending()
 	set_physics_process(false)
 	# Dead players stop being homing/knockback targets until they respawn.
 	remove_from_group(Projectile.TARGET_GROUP)
@@ -424,6 +431,8 @@ func respawn(spawn_position: Vector2) -> void:
 	# Clear any out-of-bounds excursion so a respawn starts with fresh physics (#84).
 	_out_of_bounds = false
 	_border_damage_timer = 0.0
+	# Refill the magazine and drop any in-flight delayed shot for the fresh life (#113).
+	weapon.reset_ammo()
 	# Drop any snapshot samples from the previous round so a freshly spawned
 	# PUPPET doesn't interpolate toward stale positions (#28).
 	interpolation.clear()

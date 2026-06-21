@@ -28,7 +28,22 @@ var bullet_count: int = 1
 ## When true the shot is cancelled: no projectile spawns and the weapon does not
 ## consume its cooldown (a true no-op), so an effect such as "hold fire while
 ## charging" can fire the instant it stops cancelling rather than burning a shot.
+## Note (#113): a cancelled shot still consumes `ammo_cost` rounds — cancel is a
+## no-op for the *cooldown* but not for ammo, so an effect that wants a truly free
+## cancel must also set `ammo_cost = 0`.
 var cancelled: bool = false
+
+## How many magazine rounds this shot consumes (#113). The effect chain may scale
+## or add to it exactly like `bullet_count`, in pickup order — so a "×2 rounds"
+## effect picked before a "+2 rounds" effect consumes 5, the reverse order 6. The
+## shot is denied if the magazine can't cover this cost.
+var ammo_cost: int = 1
+
+## Seconds between pulling the trigger and the bullets actually spawning (#113).
+## Default 0 fires immediately. The effect chain modifies it additively in pickup
+## order (each effect gets the running value), matching the other shot attributes.
+## The weapon's cooldown still starts at trigger time, not at the delayed spawn.
+var delay: float = 0.0
 
 # Per-bullet stats, seeded from the firing weapon and overridable before firing.
 var damage: float = 25.0
