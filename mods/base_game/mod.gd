@@ -34,7 +34,10 @@ func _register_arenas() -> void:
 
 func _register_base_stats() -> void:
 	# Core movement stats
-	StatRegistry.register("move_speed",      300.0)
+	# move_speed has a 0 floor (#43): a card can leave you unable to move, but
+	# never drive the speed negative (which would invert movement). No upper cap —
+	# runaway speed is left to modding freedom.
+	StatRegistry.register("move_speed",      300.0, 0.0)
 	StatRegistry.register("jump_force",      550.0)
 	StatRegistry.register("gravity_scale",   1.0)
 
@@ -44,8 +47,15 @@ func _register_base_stats() -> void:
 	StatRegistry.register("player_size",     32.0)
 
 	# Combat stats
-	StatRegistry.register("max_health",      100.0)
+	# max_health has a 1 floor (#43): a card can chip away at survivability but
+	# never drop the cap to 0 (an instant-death / un-spawnable state).
+	StatRegistry.register("max_health",      100.0, 1.0)
 	StatRegistry.register("damage",          25.0)
+	# NOTE (#43): fire_rate is shots-per-second here, so a `>= 0` floor is *not*
+	# safe yet (0 = never fires, and the weapon divides by it). The maintainer's
+	# intended `fire_rate >= 0` bound presumes redefining it as "time between
+	# shots" — a behavioural change that also inverts the Rapid Fire card — so it
+	# is tracked separately and intentionally left unbounded here.
 	StatRegistry.register("fire_rate",       1.0)   # shots per second
 	StatRegistry.register("bullet_speed",    800.0)
 	StatRegistry.register("bullet_scale",    1.0)

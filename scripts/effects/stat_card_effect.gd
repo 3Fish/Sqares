@@ -35,5 +35,11 @@ func on_apply(ctx: EffectContext) -> void:
 		return
 	for stat_name in deltas:
 		bag.modify_stat(stat_name, float(deltas[stat_name]))
+		# Clamp the freshly mutated stat to its registered bounds (#43): a "+N"/
+		# "-N" delta (or repeated picks) can never push a bounded stat out of range
+		# — e.g. drive move_speed negative or max_health to an instant-death 0.
+		# An unbounded stat (the default) is returned unchanged, so this is a no-op
+		# wherever no bound was registered.
+		bag.set_stat(stat_name, StatRegistry.clamp_value(stat_name, float(bag.get_stat(stat_name))))
 	# Empty merge re-syncs Health / Weapon from the freshly mutated stat bag.
 	player.apply_stats({})

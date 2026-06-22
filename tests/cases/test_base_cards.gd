@@ -156,6 +156,30 @@ func _test_negative_delta_reduces_stat() -> void:
 	assert_almost_eq(player.stats.get_stat("gravity_scale"), 0.75, "negative delta lowers the stat")
 
 
+func _test_on_apply_clamps_to_registered_bounds() -> void:
+	# A delta that would push a bounded stat past its floor/cap is clamped to the
+	# registered bound right after the mutation (#43). The probe stat is uniquely
+	# named so it doesn't collide with the base game's stats.
+	StatRegistry.register("clamp_card_floor", 10.0, 0.0)
+	StatRegistry.register("clamp_card_cap", 10.0, -INF, 20.0)
+	var player := _StubPlayer.new({"clamp_card_floor": 5.0, "clamp_card_cap": 18.0})
+	# -8 would take the floor stat to -3 (clamped to 0); +9 would take the cap
+	# stat to 27 (clamped to 20).
+	StatCardEffect.new({"clamp_card_floor": -8.0, "clamp_card_cap": 9.0}).on_apply(EffectContext.new(player))
+	assert_almost_eq(player.stats.get_stat("clamp_card_floor"), 0.0, "below-floor delta clamps up to the min")
+	assert_almost_eq(player.stats.get_stat("clamp_card_cap"), 20.0, "above-cap delta clamps down to the max")
+
+
+func _test_on_apply_leaves_unbounded_stat_unclamped() -> void:
+	# A stat with no registered bound is never altered by clamping — the delta
+	# applies in full (the modding-freedom default).
+	StatRegistry.register("clamp_card_free", 10.0)
+	var player := _StubPlayer.new({"clamp_card_free": 5.0})
+	StatCardEffect.new({"clamp_card_free": -50.0}).on_apply(EffectContext.new(player))
+	assert_almost_eq(player.stats.get_stat("clamp_card_free"), -45.0,
+		"an unbounded stat takes the full (even negative) delta")
+
+
 # --- Card → EffectEngine → stat seam ---------------------------------------
 
 func _test_applying_a_base_card_through_the_engine_mutates_stats() -> void:
