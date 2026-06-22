@@ -22,6 +22,15 @@ var _cooldown: float = 0.0
 ## `_ammo` reloads to `magazine_size` once `_idle_time` reaches `reload_time`.
 var _ammo: int = 3
 var _idle_time: float = 0.0
+## On a client, the host's authoritative idle-reload progress adopted from each
+## snapshot (#123). A client never simulates its own reload (`_tick_reload`
+## early-returns on clients), so its local `_idle_time` stays put; the HUD's
+## reload indicator (#116) reads this replicated value instead, exactly like the
+## ammo count is adopted (#117). `-1.0` means "not replicated" (the host, or a
+## client before its first snapshot), so the readout falls back to the local
+## computation. Cleared by `reset_ammo` so a stale value never bleeds into a new
+## round.
+var _replicated_reload_progress: float = -1.0
 ## Shots whose `delay` has not yet elapsed (#113). Each entry is
 ## {spec, direction, net_id, remaining}; advanced in `_physics_process` and
 ## spawned when `remaining` hits zero. Cancelled wholesale on trigger-release /
@@ -55,6 +64,10 @@ func reset_ammo() -> void:
 	_ammo = magazine_size
 	_idle_time = 0.0
 	_pending.clear()
+	# Drop any replicated reload progress from the previous round so a client
+	# falls back to its (full-magazine) local computation until a fresh snapshot
+	# arrives, rather than reporting a stale fraction (#123).
+	_replicated_reload_progress = -1.0
 
 
 ## Rounds currently in the magazine. Exposed for the ammo HUD (#113 A4 / #116).
@@ -64,8 +77,14 @@ func get_ammo() -> int:
 
 ## Idle-reload progress in [0, 1] for the ammo HUD (#116): how far the magazine
 ## has refilled toward full since the last shot. A full magazine reports 1.0.
-## Delegates to the pure `AmmoModel.reload_progress` so the maths is testable.
+## On a client this is host-authoritative (#123): the client never ticks its own
+## reload, so it returns the progress adopted from the latest snapshot when one
+## has arrived (`set_reload_progress`). On the host — or on a client before its
+## first snapshot — it delegates to the pure `AmmoModel.reload_progress` so the
+## maths stays testable.
 func get_reload_progress() -> float:
+	if _replicated_reload_progress >= 0.0:
+		return _replicated_reload_progress
 	return AmmoModel.reload_progress(_ammo, magazine_size, _idle_time, reload_time)
 
 
@@ -75,6 +94,15 @@ func get_reload_progress() -> float:
 ## stale payload can never over- or under-fill it.
 func set_ammo(value: int) -> void:
 	_ammo = clampi(value, 0, magazine_size)
+
+
+## Adopts the host's authoritative idle-reload progress on a client (#123),
+## clamped to [0, 1]. Mirrors `set_ammo`: a client never simulates its own
+## reload, so the HUD's reload indicator reads the host's value on every peer.
+## A clamped `0.0` is a real "just fired" reading (distinct from the `-1.0`
+## "not replicated" sentinel), so it correctly drives the readout too.
+func set_reload_progress(value: float) -> void:
+	_replicated_reload_progress = clampf(value, 0.0, 1.0)
 
 
 ## Cancels every delayed shot still waiting to spawn (#113): a released trigger,

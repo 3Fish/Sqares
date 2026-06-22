@@ -9,8 +9,11 @@ class _StubHealth extends RefCounted:
 
 class _StubWeapon extends RefCounted:
 	var _ammo: int = 0
+	var _reload_progress: float = -1.0
 	func get_ammo() -> int: return _ammo
 	func set_ammo(value: int) -> void: _ammo = value
+	func get_reload_progress() -> float: return _reload_progress
+	func set_reload_progress(value: float) -> void: _reload_progress = value
 
 class _StubPlayer extends RefCounted:
 	var player_id: int = 0
@@ -27,12 +30,14 @@ func _test_to_dict_flattens_vectors() -> void:
 	s.velocity = Vector2(5, 6)
 	s.health = 73.5
 	s.ammo = 4
+	s.reload_progress = 0.25
 	var d := s.to_dict()
 	assert_eq(d["player_id"], 2, "player_id serialised")
 	assert_eq(d["position"], [12.0, -34.0], "position flattened to [x, y]")
 	assert_eq(d["velocity"], [5.0, 6.0], "velocity flattened to [x, y]")
 	assert_eq(d["health"], 73.5, "health serialised")
 	assert_eq(d["ammo"], 4, "ammo serialised")
+	assert_eq(d["reload_progress"], 0.25, "reload_progress serialised")
 
 
 func _test_from_dict_roundtrip() -> void:
@@ -42,12 +47,14 @@ func _test_from_dict_roundtrip() -> void:
 	original.velocity = Vector2(-7, 8)
 	original.health = 42.0
 	original.ammo = 2
+	original.reload_progress = 0.5
 	var restored := NetPlayerState.from_dict(original.to_dict())
 	assert_eq(restored.player_id, 3, "player_id round-trips")
 	assert_eq(restored.position, Vector2(100, 200), "position round-trips")
 	assert_eq(restored.velocity, Vector2(-7, 8), "velocity round-trips")
 	assert_almost_eq(restored.health, 42.0, "health round-trips")
 	assert_eq(restored.ammo, 2, "ammo round-trips")
+	assert_almost_eq(restored.reload_progress, 0.5, "reload_progress round-trips")
 
 
 func _test_from_dict_defaults_on_empty() -> void:
@@ -57,6 +64,7 @@ func _test_from_dict_defaults_on_empty() -> void:
 	assert_eq(s.velocity, Vector2.ZERO, "missing velocity -> ZERO")
 	assert_almost_eq(s.health, 0.0, "missing health -> 0")
 	assert_eq(s.ammo, -1, "missing ammo -> -1 (not carried)")
+	assert_almost_eq(s.reload_progress, -1.0, "missing reload_progress -> -1 (not carried)")
 
 
 func _test_from_dict_tolerates_malformed_vectors() -> void:
@@ -71,6 +79,7 @@ func _test_capture_reads_from_player() -> void:
 	hp.current_hp = 55.0
 	var wpn := _StubWeapon.new()
 	wpn._ammo = 2
+	wpn._reload_progress = 0.4
 	var p := _StubPlayer.new()
 	p.player_id = 3
 	p.global_position = Vector2(10, 20)
@@ -83,6 +92,7 @@ func _test_capture_reads_from_player() -> void:
 	assert_eq(s.velocity, Vector2(1, 2), "captures velocity")
 	assert_almost_eq(s.health, 55.0, "captures current_hp")
 	assert_eq(s.ammo, 2, "captures the weapon's round count")
+	assert_almost_eq(s.reload_progress, 0.4, "captures the weapon's reload progress")
 
 
 func _test_last_input_seq_roundtrips() -> void:
@@ -120,6 +130,7 @@ func _test_apply_to_writes_onto_player() -> void:
 	s.velocity = Vector2(9, -9)
 	s.health = 66.0
 	s.ammo = 1
+	s.reload_progress = 0.75
 	var hp := _StubHealth.new()
 	var wpn := _StubWeapon.new()
 	wpn._ammo = 5
@@ -131,6 +142,7 @@ func _test_apply_to_writes_onto_player() -> void:
 	assert_eq(p.velocity, Vector2(9, -9), "applies velocity")
 	assert_almost_eq(hp.current_hp, 66.0, "applies health")
 	assert_eq(wpn._ammo, 1, "applies the authoritative ammo onto the weapon")
+	assert_almost_eq(wpn._reload_progress, 0.75, "applies the authoritative reload progress onto the weapon")
 
 
 func _test_apply_to_null_player_is_safe() -> void:
@@ -139,7 +151,7 @@ func _test_apply_to_null_player_is_safe() -> void:
 	assert_true(true, "apply_to(null) is a no-op")
 
 
-# --- ammo replication (#117) -------------------------------------------------
+# --- ammo + reload-progress replication (#117 / #123) ------------------------
 
 func _test_capture_without_weapon_leaves_ammo_uncarried() -> void:
 	var p := _StubPlayer.new()
@@ -147,35 +159,56 @@ func _test_capture_without_weapon_leaves_ammo_uncarried() -> void:
 	p.weapon = null
 	var s := NetPlayerState.capture(p)
 	assert_eq(s.ammo, -1, "a weaponless player carries no ammo (-1)")
+	assert_almost_eq(s.reload_progress, -1.0, "a weaponless player carries no reload progress (-1)")
 
 
 func _test_apply_ammo_to_writes_only_ammo() -> void:
 	var s := NetPlayerState.new()
 	s.position = Vector2(10, 10)  # should be ignored by the ammo-only path
 	s.ammo = 3
+	s.reload_progress = 0.6
 	var wpn := _StubWeapon.new()
 	wpn._ammo = 0
 	var p := _StubPlayer.new()
 	p.weapon = wpn
 	s.apply_ammo_to(p)
 	assert_eq(wpn._ammo, 3, "apply_ammo_to adopts the count")
+	assert_almost_eq(wpn._reload_progress, 0.6, "apply_ammo_to adopts the reload progress")
 	assert_eq(p.global_position, Vector2.ZERO, "apply_ammo_to leaves the transform untouched")
 
 
 func _test_apply_ammo_to_skips_uncarried_ammo() -> void:
-	# A -1 (not carried) ammo must never clear an existing magazine.
-	var s := NetPlayerState.new()  # ammo defaults to -1
+	# A -1 (not carried) ammo / progress must never clear an existing magazine or
+	# zero the reload readout.
+	var s := NetPlayerState.new()  # ammo and reload_progress default to -1
 	var wpn := _StubWeapon.new()
 	wpn._ammo = 4
+	wpn._reload_progress = 0.3
 	var p := _StubPlayer.new()
 	p.weapon = wpn
 	s.apply_ammo_to(p)
 	assert_eq(wpn._ammo, 4, "uncarried ammo (-1) leaves the magazine alone")
+	assert_almost_eq(wpn._reload_progress, 0.3, "uncarried reload progress (-1) leaves the readout alone")
+
+
+func _test_apply_ammo_to_adopts_zero_reload_progress() -> void:
+	# A genuine 0.0 (just fired) is a carried value, distinct from the -1 "not
+	# carried" sentinel, so it must be adopted rather than skipped.
+	var s := NetPlayerState.new()
+	s.ammo = 2
+	s.reload_progress = 0.0
+	var wpn := _StubWeapon.new()
+	wpn._reload_progress = 0.9
+	var p := _StubPlayer.new()
+	p.weapon = wpn
+	s.apply_ammo_to(p)
+	assert_almost_eq(wpn._reload_progress, 0.0, "a carried 0.0 reload progress is adopted")
 
 
 func _test_apply_ammo_to_weaponless_player_is_safe() -> void:
 	var s := NetPlayerState.new()
 	s.ammo = 2
+	s.reload_progress = 0.5
 	var p := _StubPlayer.new()
 	p.weapon = null
 	s.apply_ammo_to(p)  # must not crash

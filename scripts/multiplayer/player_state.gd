@@ -5,7 +5,8 @@ class_name NetPlayerState
 ##
 ## The minimal authoritative state a client needs to render a remote player:
 ## which player it is, where it is, how it's moving, its current health, and its
-## host-authoritative magazine count (#117, for the ammo HUD).
+## host-authoritative magazine count + idle-reload progress (#117/#123, for the
+## ammo HUD).
 ## This is the data *contract* for replication; the transport (RPC fan-out, tick
 ## rate, interpolation) and the richer projectile / spawn / health-event
 ## replication + input reconciliation are #27.
@@ -29,6 +30,12 @@ var last_input_seq: int = 0
 ## true on every peer. -1 means "not carried" (a player with no weapon, or an
 ## older payload) so a partial snapshot never wrongly empties a magazine.
 var ammo: int = -1
+## Idle-reload progress in [0, 1], host-authoritative (#123): a client never
+## ticks its own reload, so the host surfaces it here for the ammo HUD's reload
+## indicator (#116) to read true on every peer, alongside the count. -1.0 means
+## "not carried" (no weapon, or an older payload), so a partial snapshot leaves
+## the client's local readout alone rather than forcing it to 0%.
+var reload_progress: float = -1.0
 
 
 ## Serialises to a flat, JSON-portable dictionary. Vectors are flattened to
@@ -41,6 +48,7 @@ func to_dict() -> Dictionary:
 		"health": health,
 		"last_input_seq": last_input_seq,
 		"ammo": ammo,
+		"reload_progress": reload_progress,
 	}
 
 
@@ -54,6 +62,7 @@ static func from_dict(data: Dictionary) -> NetPlayerState:
 	s.health = float(data.get("health", 0.0))
 	s.last_input_seq = int(data.get("last_input_seq", 0))
 	s.ammo = int(data.get("ammo", -1))
+	s.reload_progress = float(data.get("reload_progress", -1.0))
 	return s
 
 
@@ -75,6 +84,8 @@ static func capture(player: Object, p_last_input_seq: int = 0) -> NetPlayerState
 	var weapon = player.get("weapon")
 	if weapon != null and weapon.has_method("get_ammo"):
 		s.ammo = int(weapon.get_ammo())
+	if weapon != null and weapon.has_method("get_reload_progress"):
+		s.reload_progress = float(weapon.get_reload_progress())
 	return s
 
 
@@ -91,17 +102,22 @@ func apply_to(player: Object) -> void:
 	apply_ammo_to(player)
 
 
-## Adopts just the authoritative magazine count onto a live player's weapon
-## (#117), without touching its transform/health. Used by the snapshot path,
-## which adopts health and ammo outright but reconciles position separately. A
-## `-1` ammo (not carried) or a weaponless player is a no-op, so an old payload
-## never clears a magazine.
+## Adopts the authoritative magazine count and idle-reload progress onto a live
+## player's weapon (#117/#123), without touching its transform/health. Used by
+## the snapshot path, which adopts health and ammo outright but reconciles
+## position separately. Each field is guarded by its own "not carried" sentinel
+## (ammo `-1`, progress `-1.0`) and `has_method`, so a weaponless player or an
+## old payload never clears a magazine nor zeroes the reload readout.
 func apply_ammo_to(player: Object) -> void:
-	if player == null or ammo < 0:
+	if player == null:
 		return
 	var weapon = player.get("weapon")
-	if weapon != null and weapon.has_method("set_ammo"):
+	if weapon == null:
+		return
+	if ammo >= 0 and weapon.has_method("set_ammo"):
 		weapon.set_ammo(ammo)
+	if reload_progress >= 0.0 and weapon.has_method("set_reload_progress"):
+		weapon.set_reload_progress(reload_progress)
 
 
 static func _to_vec2(value: Variant) -> Vector2:
