@@ -87,3 +87,40 @@ func _test_set_ammo_clamps_to_the_magazine() -> void:
 	w.set_ammo(-4)
 	assert_eq(w.get_ammo(), 0, "a negative count is clamped to empty")
 	w.free()
+
+
+# --- set_reload_progress: host-authoritative reload readout (#123) -----------
+
+func _test_set_reload_progress_overrides_the_local_readout() -> void:
+	var w := Weapon.new()
+	w.apply_stats({"magazine_size": 5.0, "reload_time": 1.0})
+	# A non-full magazine with no idle time would locally compute 0% progress;
+	# the replicated value must win so a client's HUD reads the host's truth.
+	w.set_ammo(2)
+	assert_true(is_equal_approx(w.get_reload_progress(), 0.0), "without replication a client reads its (0%) local computation")
+	w.set_reload_progress(0.6)
+	assert_true(is_equal_approx(w.get_reload_progress(), 0.6), "adopts the host's replicated reload progress")
+	w.free()
+
+
+func _test_set_reload_progress_clamps() -> void:
+	var w := Weapon.new()
+	w.apply_stats({"magazine_size": 5.0, "reload_time": 1.0})
+	w.set_ammo(1)
+	w.set_reload_progress(1.7)
+	assert_true(is_equal_approx(w.get_reload_progress(), 1.0), "an over-range progress clamps to 1.0")
+	w.set_reload_progress(-0.5)
+	assert_true(is_equal_approx(w.get_reload_progress(), 0.0), "a negative progress clamps to 0.0 (still an adopted value)")
+	w.free()
+
+
+func _test_reset_ammo_clears_replicated_reload_progress() -> void:
+	# A stale replicated value from the previous round must not bleed into the
+	# next: reset drops it so the client falls back to its (full = 1.0) local
+	# computation until a fresh snapshot arrives.
+	var w := Weapon.new()
+	w.apply_stats({"magazine_size": 5.0, "reload_time": 1.0})
+	w.set_reload_progress(0.4)
+	w.reset_ammo()
+	assert_true(is_equal_approx(w.get_reload_progress(), 1.0), "reset clears the replicated progress; a full magazine reads 1.0 locally")
+	w.free()
