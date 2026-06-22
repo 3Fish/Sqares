@@ -20,6 +20,12 @@ const BULLET_DENSITY := 0.05
 ## Blocks measure size as area in px², so their density is kept small to land
 ## block mass in the same rough range as players and bullets.
 const BLOCK_DENSITY := 0.001
+## Block *health* density, decoupled from the mass density above (#103 A2): block
+## durability is tuned independently of how heavy a block is to shove. Sized so a
+## player-sized block — the 32×32 `player_size` footprint, area 1024 px² — has
+## ~20 health (1024 × 0.02 ≈ 20), destroyed by a single default 25-damage shot,
+## and a double-area block has ~40 (two hits). Health scales linearly with area.
+const BLOCK_HEALTH_DENSITY := 0.02
 
 ## Couples player body size to its health — tankier players are bigger.
 const PLAYER_SIZE_PER_HEALTH := 0.5
@@ -74,10 +80,13 @@ static func block_mass(size: Vector2) -> float:
 	return mass_from_size(rect_area(size), BLOCK_DENSITY)
 
 
-## `health = size * density`, sharing the block mass formula (same area, same
-## density). Consumed by Destructible (#97); here so the formula stays single.
+## `health = area * health_density`. Routes through the shared `mass_from_size`
+## (area × density) definition like block mass, but on its own `BLOCK_HEALTH_DENSITY`
+## so durability is decoupled from push mass (#103 A2). Consumed by Destructible
+## (#97). Tuned so a player-sized block is destroyed by one default shot (see the
+## `BLOCK_HEALTH_DENSITY` note); health scales linearly with the block's area.
 static func block_health(size: Vector2) -> float:
-	return mass_from_size(rect_area(size), BLOCK_DENSITY)
+	return mass_from_size(rect_area(size), BLOCK_HEALTH_DENSITY)
 
 
 # --- Push impulse -----------------------------------------------------------
