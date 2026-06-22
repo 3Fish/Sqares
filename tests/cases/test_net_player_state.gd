@@ -7,11 +7,17 @@ extends TestCase
 class _StubHealth extends RefCounted:
 	var current_hp: float = 0.0
 
+class _StubWeapon extends RefCounted:
+	var _ammo: int = 0
+	func get_ammo() -> int: return _ammo
+	func set_ammo(value: int) -> void: _ammo = value
+
 class _StubPlayer extends RefCounted:
 	var player_id: int = 0
 	var global_position: Vector2 = Vector2.ZERO
 	var velocity: Vector2 = Vector2.ZERO
 	var health = null
+	var weapon = null
 
 
 func _test_to_dict_flattens_vectors() -> void:
@@ -20,11 +26,13 @@ func _test_to_dict_flattens_vectors() -> void:
 	s.position = Vector2(12, -34)
 	s.velocity = Vector2(5, 6)
 	s.health = 73.5
+	s.ammo = 4
 	var d := s.to_dict()
 	assert_eq(d["player_id"], 2, "player_id serialised")
 	assert_eq(d["position"], [12.0, -34.0], "position flattened to [x, y]")
 	assert_eq(d["velocity"], [5.0, 6.0], "velocity flattened to [x, y]")
 	assert_eq(d["health"], 73.5, "health serialised")
+	assert_eq(d["ammo"], 4, "ammo serialised")
 
 
 func _test_from_dict_roundtrip() -> void:
@@ -33,11 +41,13 @@ func _test_from_dict_roundtrip() -> void:
 	original.position = Vector2(100, 200)
 	original.velocity = Vector2(-7, 8)
 	original.health = 42.0
+	original.ammo = 2
 	var restored := NetPlayerState.from_dict(original.to_dict())
 	assert_eq(restored.player_id, 3, "player_id round-trips")
 	assert_eq(restored.position, Vector2(100, 200), "position round-trips")
 	assert_eq(restored.velocity, Vector2(-7, 8), "velocity round-trips")
 	assert_almost_eq(restored.health, 42.0, "health round-trips")
+	assert_eq(restored.ammo, 2, "ammo round-trips")
 
 
 func _test_from_dict_defaults_on_empty() -> void:
@@ -46,6 +56,7 @@ func _test_from_dict_defaults_on_empty() -> void:
 	assert_eq(s.position, Vector2.ZERO, "missing position -> ZERO")
 	assert_eq(s.velocity, Vector2.ZERO, "missing velocity -> ZERO")
 	assert_almost_eq(s.health, 0.0, "missing health -> 0")
+	assert_eq(s.ammo, -1, "missing ammo -> -1 (not carried)")
 
 
 func _test_from_dict_tolerates_malformed_vectors() -> void:
@@ -58,16 +69,20 @@ func _test_from_dict_tolerates_malformed_vectors() -> void:
 func _test_capture_reads_from_player() -> void:
 	var hp := _StubHealth.new()
 	hp.current_hp = 55.0
+	var wpn := _StubWeapon.new()
+	wpn._ammo = 2
 	var p := _StubPlayer.new()
 	p.player_id = 3
 	p.global_position = Vector2(10, 20)
 	p.velocity = Vector2(1, 2)
 	p.health = hp
+	p.weapon = wpn
 	var s := NetPlayerState.capture(p)
 	assert_eq(s.player_id, 3, "captures player_id")
 	assert_eq(s.position, Vector2(10, 20), "captures global_position")
 	assert_eq(s.velocity, Vector2(1, 2), "captures velocity")
 	assert_almost_eq(s.health, 55.0, "captures current_hp")
+	assert_eq(s.ammo, 2, "captures the weapon's round count")
 
 
 func _test_last_input_seq_roundtrips() -> void:
@@ -104,16 +119,64 @@ func _test_apply_to_writes_onto_player() -> void:
 	s.position = Vector2(300, 400)
 	s.velocity = Vector2(9, -9)
 	s.health = 66.0
+	s.ammo = 1
 	var hp := _StubHealth.new()
+	var wpn := _StubWeapon.new()
+	wpn._ammo = 5
 	var p := _StubPlayer.new()
 	p.health = hp
+	p.weapon = wpn
 	s.apply_to(p)
 	assert_eq(p.global_position, Vector2(300, 400), "applies position")
 	assert_eq(p.velocity, Vector2(9, -9), "applies velocity")
 	assert_almost_eq(hp.current_hp, 66.0, "applies health")
+	assert_eq(wpn._ammo, 1, "applies the authoritative ammo onto the weapon")
 
 
 func _test_apply_to_null_player_is_safe() -> void:
 	var s := NetPlayerState.new()
 	s.apply_to(null)  # must not crash
 	assert_true(true, "apply_to(null) is a no-op")
+
+
+# --- ammo replication (#117) -------------------------------------------------
+
+func _test_capture_without_weapon_leaves_ammo_uncarried() -> void:
+	var p := _StubPlayer.new()
+	p.health = _StubHealth.new()
+	p.weapon = null
+	var s := NetPlayerState.capture(p)
+	assert_eq(s.ammo, -1, "a weaponless player carries no ammo (-1)")
+
+
+func _test_apply_ammo_to_writes_only_ammo() -> void:
+	var s := NetPlayerState.new()
+	s.position = Vector2(10, 10)  # should be ignored by the ammo-only path
+	s.ammo = 3
+	var wpn := _StubWeapon.new()
+	wpn._ammo = 0
+	var p := _StubPlayer.new()
+	p.weapon = wpn
+	s.apply_ammo_to(p)
+	assert_eq(wpn._ammo, 3, "apply_ammo_to adopts the count")
+	assert_eq(p.global_position, Vector2.ZERO, "apply_ammo_to leaves the transform untouched")
+
+
+func _test_apply_ammo_to_skips_uncarried_ammo() -> void:
+	# A -1 (not carried) ammo must never clear an existing magazine.
+	var s := NetPlayerState.new()  # ammo defaults to -1
+	var wpn := _StubWeapon.new()
+	wpn._ammo = 4
+	var p := _StubPlayer.new()
+	p.weapon = wpn
+	s.apply_ammo_to(p)
+	assert_eq(wpn._ammo, 4, "uncarried ammo (-1) leaves the magazine alone")
+
+
+func _test_apply_ammo_to_weaponless_player_is_safe() -> void:
+	var s := NetPlayerState.new()
+	s.ammo = 2
+	var p := _StubPlayer.new()
+	p.weapon = null
+	s.apply_ammo_to(p)  # must not crash
+	assert_true(true, "apply_ammo_to with no weapon is a no-op")

@@ -65,3 +65,25 @@ func _test_get_reload_progress_tracks_the_idle_window() -> void:
 	w._idle_time = 1.0
 	assert_true(is_equal_approx(w.get_reload_progress(), 1.0), "progress clamps to full at the threshold")
 	w.free()
+
+
+# --- set_ammo: host-authoritative adoption (#117) ----------------------------
+
+func _test_set_ammo_overwrites_the_count() -> void:
+	var w := Weapon.new()
+	w.apply_stats({"magazine_size": 5.0})
+	w.reset_ammo()
+	w.set_ammo(2)
+	assert_eq(w.get_ammo(), 2, "set_ammo adopts the authoritative round count")
+	w.free()
+
+
+func _test_set_ammo_clamps_to_the_magazine() -> void:
+	var w := Weapon.new()
+	w.apply_stats({"magazine_size": 3.0})
+	w.reset_ammo()
+	w.set_ammo(9)
+	assert_eq(w.get_ammo(), 3, "an over-range count is clamped to the magazine size")
+	w.set_ammo(-4)
+	assert_eq(w.get_ammo(), 0, "a negative count is clamped to empty")
+	w.free()
