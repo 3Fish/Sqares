@@ -52,3 +52,16 @@ func _test_idle_reload_refills_after_reload_time() -> void:
 	w._tick_reload(0.6)
 	assert_eq(w.get_ammo(), 3, "magazine refills fully once idle for reload_time")
 	w.free()
+
+
+func _test_get_reload_progress_tracks_the_idle_window() -> void:
+	var w := Weapon.new()
+	w.apply_stats({"magazine_size": 3.0, "reload_time": 1.0})
+	w.reset_ammo()
+	assert_true(is_equal_approx(w.get_reload_progress(), 1.0), "a full magazine reports fully loaded")
+	w._ammo = 1  # two rounds spent this magazine
+	w._idle_time = 0.5
+	assert_true(is_equal_approx(w.get_reload_progress(), 0.5), "halfway through the reload window")
+	w._idle_time = 1.0
+	assert_true(is_equal_approx(w.get_reload_progress(), 1.0), "progress clamps to full at the threshold")
+	w.free()
