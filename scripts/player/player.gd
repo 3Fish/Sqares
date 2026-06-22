@@ -375,6 +375,9 @@ func apply_knockback(impulse: Vector2) -> void:
 ## and replays its still-pending inputs.
 func reconcile(auth: NetPlayerState) -> void:
 	health.current_hp = auth.health
+	# Ammo is host-authoritative (#117): a client never simulates its own
+	# magazine, so adopt the host's count outright, like health.
+	auth.apply_ammo_to(self)
 	var predicted = prediction.state_at(auth.last_input_seq)
 	prediction.ack(auth.last_input_seq)
 	if predicted == null:

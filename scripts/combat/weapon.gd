@@ -69,6 +69,14 @@ func get_reload_progress() -> float:
 	return AmmoModel.reload_progress(_ammo, magazine_size, _idle_time, reload_time)
 
 
+## Overwrites the magazine to an authoritative round count (#117). Ammo is
+## host-authoritative (#113 A6): a client never simulates ammo, it adopts the
+## host's count from each snapshot. Clamped to the magazine so a malformed or
+## stale payload can never over- or under-fill it.
+func set_ammo(value: int) -> void:
+	_ammo = clampi(value, 0, magazine_size)
+
+
 ## Cancels every delayed shot still waiting to spawn (#113): a released trigger,
 ## a death, or a round end abandons the pending shot rather than firing it late.
 func clear_pending() -> void:
@@ -151,6 +159,12 @@ func _fire_spec(spec: ShotSpec, direction: Vector2, net_id: String) -> Projectil
 ## with respect to the scene tree, so the reload cadence is unit-testable by
 ## calling it directly.
 func _tick_reload(delta: float) -> void:
+	# Ammo is host-authoritative (#113 A6 / #117): a client adopts the host's
+	# round count from each snapshot and never simulates its own reload, so the
+	# replicated value isn't overwritten between snapshots. (Consumption is
+	# already gated the same way in `try_fire`.)
+	if NetworkManager.is_client():
+		return
 	if _ammo >= magazine_size:
 		return
 	_idle_time += delta

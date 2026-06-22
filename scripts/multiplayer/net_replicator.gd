@@ -207,6 +207,9 @@ func _client_receive_snapshot(data: Dictionary) -> void:
 			# tick rate (#28). Stamped with local receive time so interpolation
 			# needs no host-clock sync.
 			player.health.current_hp = state.health
+			# Ammo, like health, is adopted outright (host-authoritative, #117) so
+			# the ammo HUD reads true for remote players too.
+			state.apply_ammo_to(player)
 			player.interpolation.push(net_time_seconds(), state.position, state.velocity)
 
 
