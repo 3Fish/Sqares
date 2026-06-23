@@ -302,6 +302,13 @@ func _update_border(delta: float, replay: bool) -> bool:
 	return true
 
 
+## True while this player's body is touching or past a map border (#84): the
+## damaging out-of-bounds state the elastic border applies each tick. Read by the
+## HUD's [BorderOverlay] (#101) to flash the contact and flag the player off-screen.
+func is_out_of_bounds() -> bool:
+	return _out_of_bounds
+
+
 ## True for the machine that authoritatively owns this player's health: offline
 ## players and the host's own square (LOCAL) and the host's stand-ins for remote
 ## clients (SIMULATED). A PREDICTED client square only predicts movement — its
