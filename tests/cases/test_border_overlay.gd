@@ -144,6 +144,77 @@ func _test_flash_expires_after_its_duration() -> void:
 	overlay.free()
 
 
+# --- Pure electricity arc geometry (#128) -----------------------------------
+
+func _test_frame_corners_are_the_four_edge_endpoints() -> void:
+	var c := Overlay.frame_corners(Vector2(2 * HX, 2 * HY))
+	assert_eq(c.size(), 4, "a rectangle has four corners")
+	assert_eq(c[0], Vector2(0, 0), "top-left")
+	assert_eq(c[1], Vector2(2 * HX, 0), "top-right")
+	assert_eq(c[2], Vector2(2 * HX, 2 * HY), "bottom-right")
+	assert_eq(c[3], Vector2(0, 2 * HY), "bottom-left")
+
+
+func _test_arc_has_segments_plus_one_points_and_anchored_endpoints() -> void:
+	var from := Vector2(10, 20)
+	var to := Vector2(110, 80)
+	var pts := Overlay.arc_points(from, to, 8, 10.0, 0.5)
+	assert_eq(pts.size(), 9, "an N-segment arc has N+1 vertices")
+	assert_eq(pts[0], from, "the arc starts exactly at `from`")
+	assert_eq(pts[pts.size() - 1], to, "the arc ends exactly at `to`")
+
+
+func _test_arc_with_too_few_segments_is_the_straight_segment() -> void:
+	var from := Vector2(0, 0)
+	var to := Vector2(100, 0)
+	var pts := Overlay.arc_points(from, to, 0, 10.0, 1.0)
+	assert_eq(pts.size(), 2, "a degenerate arc collapses to its two endpoints")
+	assert_eq(pts[0], from, "starts at `from`")
+	assert_eq(pts[1], to, "ends at `to`")
+
+
+func _test_arc_with_zero_amplitude_is_collinear() -> void:
+	var from := Vector2(0, 0)
+	var to := Vector2(100, 0)
+	var pts := Overlay.arc_points(from, to, 6, 0.0, 2.0)
+	for i in range(pts.size()):
+		var t := float(i) / 6.0
+		assert_eq(pts[i], from.lerp(to, t), "zero amplitude leaves every vertex on the line")
+
+
+func _test_arc_interior_displacement_is_bounded_by_amplitude() -> void:
+	var from := Vector2(0, 0)
+	var to := Vector2(100, 0)  # along x, so the perpendicular offset is purely in y
+	var amplitude := 10.0
+	# Sweep several phases so the bound holds across the animation, not just one frame.
+	for step in range(12):
+		var phase := float(step) * 0.5
+		var pts := Overlay.arc_points(from, to, 16, amplitude, phase)
+		for p in pts:
+			assert_true(absf(p.y) <= amplitude + 0.001, "no vertex strays past the amplitude")
+
+
+func _test_arc_is_deterministic_for_a_given_phase() -> void:
+	var a := Overlay.arc_points(Vector2(5, 5), Vector2(95, 45), 10, 8.0, 1.234)
+	var b := Overlay.arc_points(Vector2(5, 5), Vector2(95, 45), 10, 8.0, 1.234)
+	assert_true(a == b, "the same arguments always yield the same arc (testable / replayable)")
+
+
+func _test_arc_animates_with_phase() -> void:
+	var a := Overlay.arc_points(Vector2(0, 0), Vector2(100, 0), 10, 8.0, 0.0)
+	var b := Overlay.arc_points(Vector2(0, 0), Vector2(100, 0), 10, 8.0, 1.0)
+	# Endpoints are pinned, but an interior vertex must move as the phase advances.
+	assert_true(a[5] != b[5], "advancing the phase makes the arc crawl")
+
+
+func _test_advance_accumulates_animation_time() -> void:
+	var overlay := Overlay.new()
+	overlay.advance(0.25)
+	overlay.advance(0.25)
+	assert_almost_eq(overlay._time, 0.5, "advance accumulates the electricity animation clock")
+	overlay.free()
+
+
 func _test_re_entering_then_leaving_rearms_the_flash() -> void:
 	var overlay := Overlay.new()
 	var p := StubPlayer.new()
