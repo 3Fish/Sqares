@@ -17,9 +17,15 @@ var _hp_labels: Dictionary = {}    # player_id -> Label
 var _win_labels: Dictionary = {}   # player_id -> Label
 var _ammo_labels: Dictionary = {}  # player_id -> Label
 var _players: Dictionary = {}      # player_id -> Player
+## Elastic-border danger frame + contact flashes + out-of-bounds arrows (#101).
+## Added first so it draws behind the text readouts.
+var _border_overlay: BorderOverlay
 
 
 func _ready() -> void:
+	_border_overlay = BorderOverlay.new()
+	add_child(_border_overlay)
+
 	_round_label = _label(Vector2(440, 8), Vector2(400, 28), 18)
 	_round_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
@@ -48,6 +54,10 @@ func _process(_delta: float) -> void:
 
 func register_player(player_id: int, player: Player) -> void:
 	_players[player_id] = player
+	# Re-register the border overlay every round with the fresh player node so its
+	# out-of-bounds arrows / contact flashes track the live square (#101).
+	var p_color: Color = P_COLORS[mini(player_id, P_COLORS.size() - 1)]
+	_border_overlay.register_player(player_id, player, p_color, "P%d" % (player_id + 1))
 	if _hp_labels.has(player_id):
 		return
 	# Even ids go top-left, odd ids top-right; each extra player on a side stacks
