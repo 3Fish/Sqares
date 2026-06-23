@@ -61,8 +61,8 @@ static func specs() -> Array:
 			{"damage": 10.0}),
 		_Spec.new(
 			"rapid_fire", "Rapid Fire", Card.Rarity.UNCOMMON,
-			"Squeeze the trigger faster. +0.75 shots per second.",
-			{"fire_rate": 0.75}),
+			"Squeeze the trigger faster. -0.1s between shots.",
+			{"fire_interval": -0.1}),
 		_Spec.new(
 			"high_velocity", "High-Velocity Rounds", Card.Rarity.UNCOMMON,
 			"Flatter, faster shots. +250 bullet speed.",
