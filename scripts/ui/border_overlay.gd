@@ -44,6 +44,25 @@ const INDICATOR_MARGIN := 28.0
 const INDICATOR_SIZE := 14.0
 const INDICATOR_LABEL_SIZE := 13
 
+## "Electricity" effect on the danger border (#128, the optional extra the maintainer
+## flagged in the #101 answer). A faint animated arc crawls along each frame edge to
+## sell the border as energised; a brighter, more energetic burst of arcs radiates
+## from each live contact point. All draw-only / visual tuning per `CLAUDE.md`.
+const ELECTRIC_COLOR := Color(0.6, 0.85, 1.0)
+## Ambient arc that runs along each frame edge.
+const AMBIENT_ALPHA := 0.22
+const AMBIENT_WIDTH := 1.5
+const AMBIENT_SEGMENTS := 24
+const AMBIENT_AMPLITUDE := 7.0
+## How fast the arcs animate, in radians of phase per second.
+const ARC_SPEED := 9.0
+## Energetic burst at a contact point: this many arcs radiating outward.
+const CONTACT_ARC_COUNT := 5
+const CONTACT_ARC_LENGTH := 34.0
+const CONTACT_ARC_SEGMENTS := 6
+const CONTACT_ARC_AMPLITUDE := 9.0
+const CONTACT_ARC_WIDTH := 2.0
+
 var _half_extent: Vector2 = MapBorder.HALF_EXTENT
 ## Registered players, duck-typed (anything exposing `global_position` and
 ## `is_out_of_bounds()`), so a test stub stands in without a scene tree.
@@ -53,6 +72,8 @@ var _labels: Dictionary = {}    # id -> String
 var _was_out: Dictionary = {}   # id -> bool (out-of-bounds last tick, for edge detect)
 ## Live contact flashes: each `{ "pos": Vector2 (overlay space), "elapsed": float }`.
 var _flashes: Array = []
+## Accumulated time, drives the animated electricity phase (#128).
+var _time: float = 0.0
 
 
 ## Registers (or re-registers, each round) a player with the colour and name the
@@ -76,6 +97,7 @@ func _process(delta: float) -> void:
 ## excursion via the same first-contact edge. Scene-free given duck-typed players,
 ## so the flash cadence is unit-tested directly.
 func advance(delta: float) -> void:
+	_time += delta
 	for i in range(_flashes.size() - 1, -1, -1):
 		_flashes[i]["elapsed"] += delta
 		if _flashes[i]["elapsed"] >= FLASH_DURATION:
@@ -128,15 +150,47 @@ func _draw() -> void:
 	# Persistent semi-transparent red "danger" frame at the play-area edge.
 	var size := _half_extent * 2.0
 	draw_rect(Rect2(Vector2.ZERO, size), FRAME_COLOR, false, FRAME_WIDTH)
-	# Transient contact flashes (fading sparks at the contact point).
+	# Faint animated electricity crawling along the four frame edges (#128).
+	_draw_ambient_electricity(size)
+	# Transient contact flashes (fading sparks at the contact point) + an energetic
+	# arc burst radiating from each live contact point (#128).
 	for f in flashes():
 		var c := FLASH_COLOR
 		c.a = f["alpha"]
 		draw_circle(f["position"], FLASH_RADIUS, c)
+		_draw_contact_arcs(f["position"], f["alpha"])
 	# Out-of-bounds player arrows + names.
 	var font := ThemeDB.fallback_font
 	for ind in indicators():
 		_draw_indicator(ind["position"], ind["angle"], ind["color"], ind["label"], font)
+
+
+## Draws a faint arc along each of the four frame edges, animated by [member _time]
+## so the danger border reads as energised. Each edge gets its own phase offset so
+## they do not pulse in lockstep.
+func _draw_ambient_electricity(size: Vector2) -> void:
+	var col := ELECTRIC_COLOR
+	col.a = AMBIENT_ALPHA
+	var corners := frame_corners(size)
+	for i in range(corners.size()):
+		var a: Vector2 = corners[i]
+		var b: Vector2 = corners[(i + 1) % corners.size()]
+		var phase := _time * ARC_SPEED + float(i) * 1.7
+		var pts := arc_points(a, b, AMBIENT_SEGMENTS, AMBIENT_AMPLITUDE, phase)
+		draw_polyline(pts, col, AMBIENT_WIDTH, true)
+
+
+## Draws a short, bright burst of jagged arcs radiating outward from a contact point,
+## faded by the contact flash's `alpha` so they die with the flash.
+func _draw_contact_arcs(pos: Vector2, alpha: float) -> void:
+	var col := ELECTRIC_COLOR
+	col.a = alpha
+	for i in range(CONTACT_ARC_COUNT):
+		var angle := TAU * float(i) / float(CONTACT_ARC_COUNT) + _time * ARC_SPEED
+		var tip := pos + Vector2(CONTACT_ARC_LENGTH, 0.0).rotated(angle)
+		var phase := _time * ARC_SPEED + float(i) * 2.3
+		var pts := arc_points(pos, tip, CONTACT_ARC_SEGMENTS, CONTACT_ARC_AMPLITUDE, phase)
+		draw_polyline(pts, col, CONTACT_ARC_WIDTH, true)
 
 
 ## Draws one out-of-bounds arrow (a small triangle pointing along `angle`) in the
@@ -198,3 +252,52 @@ static func indicator_position(player_world: Vector2, half_extent: Vector2 = Map
 ## player's world-position angle. Pure.
 static func indicator_angle(player_world: Vector2) -> float:
 	return player_world.angle()
+
+
+## The four corners of the danger frame in overlay space, in edge order
+## (top-left → top-right → bottom-right → bottom-left), for `size = 2 * half_extent`.
+## Consecutive pairs (wrapping) are the four edges the ambient electricity runs
+## along. Pure.
+static func frame_corners(size: Vector2) -> PackedVector2Array:
+	return PackedVector2Array([
+		Vector2(0.0, 0.0),
+		Vector2(size.x, 0.0),
+		Vector2(size.x, size.y),
+		Vector2(0.0, size.y)])
+
+
+## A jagged "electric arc" polyline from `from` to `to` (#128): `segments` straight
+## hops whose interior vertices are pushed perpendicular to the line by up to
+## `amplitude` pixels. The displacement is a deterministic function of the vertex
+## index and `phase`, so animating `phase` over time makes the arc crawl, and a given
+## `phase` always yields the same shape (testable). The endpoints are always anchored
+## exactly on `from` / `to` (the perpendicular window tapers to zero at both ends),
+## and the interior displacement magnitude never exceeds `amplitude`. With
+## `amplitude == 0` (or `segments < 1`) the result is the straight segment. Pure.
+static func arc_points(from: Vector2, to: Vector2, segments: int, amplitude: float, phase: float) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	if segments < 1:
+		pts.append(from)
+		pts.append(to)
+		return pts
+	var dir := to - from
+	var perp := Vector2(-dir.y, dir.x)
+	if perp.length() > 0.0:
+		perp = perp.normalized()
+	for i in range(segments + 1):
+		# Pin the endpoints exactly on `from` / `to` (the sine window below is only
+		# ~0 there in floating point, which would leave a sub-pixel gap otherwise).
+		if i == 0:
+			pts.append(from)
+			continue
+		if i == segments:
+			pts.append(to)
+			continue
+		var t := float(i) / float(segments)
+		var base := from + dir * t
+		# Window is 0 at both ends (t = 0 and t = 1) so the arc tapers into its anchors.
+		var window := sin(PI * t)
+		# Two summed sines (|coeffs| sum to 1) keep |noise| <= 1 while looking jagged.
+		var noise := sin(phase + float(i) * 2.39996) * 0.6 + sin(phase * 1.7 + float(i) * 5.1) * 0.4
+		pts.append(base + perp * (amplitude * window * noise))
+	return pts
