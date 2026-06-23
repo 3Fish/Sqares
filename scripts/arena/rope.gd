@@ -26,10 +26,16 @@ class_name Rope
 ## mid-air anchor is never destroyed and never severs.
 ##
 ## The constraint maths live in the pure, scene-free [RopeConstraint] (covered by
-## the headless suite per `CLAUDE.md`); this node holds only the endpoint
-## resolution, the per-tick wiring, and the sever state. A dedicated rope visual
-## and online replication of the constraint/sever are deferred follow-ups (see the
-## PR), mirroring #84/#96/#97.
+## the headless suite per `CLAUDE.md`); this node holds the endpoint resolution,
+## the per-tick wiring, the sever state, and a decorative `Line2D` visual whose
+## sagging curve comes from the pure [RopeVisual] geometry (#104). Online
+## replication of the constraint/sever remains a deferred follow-up (see #104),
+## mirroring #84/#96/#97.
+
+## Decorative rope-line appearance. The rope never collides (per the #104
+## decision), so width/colour are pure visual tuning constants (`CLAUDE.md`).
+const ROPE_WIDTH := 3.0
+const ROPE_COLOR := Color(0.45, 0.32, 0.18)  # hemp/rope brown
 
 ## Endpoint A. `*_block` is the platform index this endpoint attaches to, or `-1`
 ## for a world anchor at `*_anchor` (in arena-local space). Exported so a built
@@ -49,12 +55,17 @@ var _node_b: Node2D = null
 ## True once an endpoint block has been destroyed: the constraint stops acting.
 var _severed: bool = false
 var _resolved: bool = false
+## Decorative line drawn between the resolved endpoints (created in `_ready`;
+## absent on the detached trees the headless tests use).
+var _line: Line2D = null
 
 
 func _ready() -> void:
 	# Run the constraint after the bodies have integrated this step.
 	process_physics_priority = 100
 	resolve()
+	_ensure_line()
+	_update_visual()
 
 
 ## Resolves the two endpoints from the exported config: looks up `Platform<index>`
@@ -88,9 +99,12 @@ func is_severed() -> bool:
 
 
 func _physics_process(_delta: float) -> void:
-	if _severed or is_decorative():
-		return
-	_apply_constraint()
+	# The constraint only acts on a live, non-severed rope with a physics endpoint;
+	# the visual is refreshed every tick either way so a swinging block's slack
+	# line and the snap-on-sever are always up to date.
+	if not _severed and not is_decorative():
+		_apply_constraint()
+	_update_visual()
 
 
 # ---------------------------------------------------------------------------
@@ -126,6 +140,59 @@ func _apply_to(node: Node2D, position_delta: Vector2, velocity_delta: Vector2) -
 		return
 	block.position += position_delta
 	block.linear_velocity += velocity_delta
+
+
+# ---------------------------------------------------------------------------
+# Decorative visual (#104)
+# ---------------------------------------------------------------------------
+
+## The decorative rope polyline in this rope's parent space: the sagging line
+## spanning the resolved endpoints (straight while taut, bowing down as the rope
+## goes slack — see [RopeVisual]). Empty once the rope has severed or an endpoint
+## block is gone, as there is nothing left to draw. Reads only endpoint positions
+## (no `Line2D`), so it is unit-testable in the headless harness.
+func visual_points() -> PackedVector2Array:
+	if _severed or _endpoint_broken(_node_a, endpoint_a_block) or _endpoint_broken(_node_b, endpoint_b_block):
+		return PackedVector2Array()
+	return RopeVisual.sag_points(
+		_position_of(_node_a, endpoint_a_anchor),
+		_position_of(_node_b, endpoint_b_anchor),
+		rope_length)
+
+
+## Creates the child `Line2D` once. Idempotent; a no-op on the detached trees the
+## headless tests build (they exercise [method visual_points] / [RopeVisual]
+## directly without a live draw).
+func _ensure_line() -> void:
+	if _line != null:
+		return
+	_line = Line2D.new()
+	_line.name = "RopeLine"
+	_line.width = ROPE_WIDTH
+	_line.default_color = ROPE_COLOR
+	_line.joint_mode = Line2D.LINE_JOINT_ROUND
+	_line.begin_cap_mode = Line2D.LINE_CAP_ROUND
+	_line.end_cap_mode = Line2D.LINE_CAP_ROUND
+	_line.antialiased = true
+	add_child(_line)
+
+
+## Pushes the current [method visual_points] into the child `Line2D`, hiding it
+## when there is nothing to draw (severed / missing endpoint). Endpoint positions
+## are in parent space, so they are mapped into the line's local space.
+func _update_visual() -> void:
+	if _line == null:
+		return
+	var pts := visual_points()
+	if pts.is_empty():
+		_line.visible = false
+		return
+	var inv := transform.affine_inverse()
+	var local := PackedVector2Array()
+	for p in pts:
+		local.append(inv * p)
+	_line.points = local
+	_line.visible = true
 
 
 # ---------------------------------------------------------------------------
