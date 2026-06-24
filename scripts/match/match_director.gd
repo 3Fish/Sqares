@@ -61,7 +61,18 @@ var _card_ui: CardSelectionUI = null
 
 
 func _ready() -> void:
-	# Consume a one-shot playtest arena, if the editor handed one over (#36).
+	# Adopt a staged match-setup configuration, if the setup screen left one (#26).
+	# One-shot: a direct load of match.tscn (the editor playtest #36, or a test)
+	# leaves nothing pending and keeps the @export defaults below.
+	if MatchConfig.consume():
+		game_mode = MatchConfig.game_mode
+		player_count = MatchConfig.player_count
+		wins_needed = MatchConfig.wins_needed
+		arena_id = MatchConfig.arena_id
+		friendly_fire = MatchConfig.friendly_fire
+	# Consume a one-shot playtest arena, if the editor handed one over (#36). The
+	# editor loads match.tscn directly (no setup config), and even if both were
+	# set this keeps the playtest arena's precedence.
 	arena_id = resolve_arena_id(pending_arena_id, arena_id)
 	pending_arena_id = ""
 	_mode = resolve_mode(game_mode)

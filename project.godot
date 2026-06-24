@@ -21,6 +21,7 @@ config/icon="res://icon.svg"
 
 GameManager="*res://scripts/core/game_manager.gd"
 DisplaySettings="*res://scripts/core/display_settings.gd"
+MatchConfig="*res://scripts/core/match_config.gd"
 ModLoader="*res://scripts/mods/mod_loader.gd"
 StatRegistry="*res://scripts/mods/stat_registry.gd"
 CardRegistry="*res://scripts/mods/card_registry.gd"
