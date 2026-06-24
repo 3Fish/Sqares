@@ -51,12 +51,12 @@ func _register_base_stats() -> void:
 	# never drop the cap to 0 (an instant-death / un-spawnable state).
 	StatRegistry.register("max_health",      100.0, 1.0)
 	StatRegistry.register("damage",          25.0)
-	# NOTE (#43): fire_rate is shots-per-second here, so a `>= 0` floor is *not*
-	# safe yet (0 = never fires, and the weapon divides by it). The maintainer's
-	# intended `fire_rate >= 0` bound presumes redefining it as "time between
-	# shots" — a behavioural change that also inverts the Rapid Fire card — so it
-	# is tracked separately and intentionally left unbounded here.
-	StatRegistry.register("fire_rate",       1.0)   # shots per second
+	# #125: fire_interval is the time in seconds between shots (lower = faster),
+	# redefined from the old shots-per-second `fire_rate` so a `>= 0` floor is now
+	# meaningful — `0` means no enforced delay (fire as fast as the physics tick /
+	# input allows), and the weapon uses the value directly as its cooldown instead
+	# of dividing by it. The Rapid Fire card grants a negative delta to speed up.
+	StatRegistry.register("fire_interval",   0.5, 0.0)   # seconds between shots
 	StatRegistry.register("bullet_speed",    800.0)
 	StatRegistry.register("bullet_scale",    1.0)
 	StatRegistry.register("bullet_bounces",  0.0)

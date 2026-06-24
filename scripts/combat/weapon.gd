@@ -2,7 +2,9 @@ extends Node2D
 class_name Weapon
 
 var damage: float = 25.0
-var fire_rate: float = 1.0
+## Seconds between shots (#125): the cooldown charged after each trigger pull.
+## Lower = faster; `0` enforces no delay (fire as fast as the physics tick allows).
+var fire_interval: float = 0.5
 var bullet_speed: float = 800.0
 var bullet_scale: float = 1.0
 var bullet_bounces: int = 0
@@ -45,7 +47,7 @@ func _ready() -> void:
 
 func apply_stats(stats: Dictionary) -> void:
 	damage         = stats.get("damage",          damage)
-	fire_rate      = stats.get("fire_rate",        fire_rate)
+	fire_interval  = stats.get("fire_interval",    fire_interval)
 	bullet_speed   = stats.get("bullet_speed",     bullet_speed)
 	bullet_scale   = stats.get("bullet_scale",     bullet_scale)
 	bullet_bounces = int(stats.get("bullet_bounces", float(bullet_bounces)))
@@ -156,8 +158,10 @@ func try_fire(direction: Vector2, net_id: String = "") -> Projectile:
 	if not spec.fires():
 		return null
 	# Cooldown is charged from the trigger pull, never the (possibly delayed) spawn
-	# (#113): a delayed shot still gates the next trigger from now.
-	_cooldown = 1.0 / maxf(fire_rate, 0.1)
+	# (#113): a delayed shot still gates the next trigger from now. fire_interval is
+	# the gap in seconds (#125), used directly; `maxf(_, 0.0)` guards a (clamped)
+	# `0` interval — the next pull then fires on the very next physics tick.
+	_cooldown = maxf(fire_interval, 0.0)
 	if spec.delay > 0.0:
 		# Schedule the spawn for `delay` seconds from now. Online replication of a
 		# delayed shot rides the netcode work (#113 A6); for now a delayed shot

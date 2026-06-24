@@ -22,6 +22,30 @@ func _test_weapon_defaults_preserved_when_keys_absent() -> void:
 	w.free()
 
 
+# --- fire_interval: seconds between shots (#125) ------------------------------
+
+func _test_weapon_fire_interval_default_is_half_a_second() -> void:
+	# #125 A1: the redefined stat defaults to a 0.5 s gap between shots.
+	var w := Weapon.new()
+	assert_true(is_equal_approx(w.fire_interval, 0.5), "Weapon defaults fire_interval to 0.5 s")
+	w.free()
+
+
+func _test_weapon_reads_fire_interval() -> void:
+	# The weapon now reads the interval directly (no shots-per-second inversion).
+	var w := Weapon.new()
+	w.apply_stats({"fire_interval": 0.2})
+	assert_true(is_equal_approx(w.fire_interval, 0.2), "Weapon reads fire_interval from stats")
+	w.free()
+
+
+func _test_weapon_fire_interval_preserved_when_key_absent() -> void:
+	var w := Weapon.new()
+	w.apply_stats({"damage": 50.0})
+	assert_true(is_equal_approx(w.fire_interval, 0.5), "fire_interval default preserved when absent")
+	w.free()
+
+
 # --- ammo / reload wiring (#113) ---------------------------------------------
 
 func _test_weapon_reads_ammo_stats() -> void:

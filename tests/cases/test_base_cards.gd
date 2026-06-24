@@ -13,7 +13,7 @@ extends TestCase
 # not guaranteed populated while the headless test harness runs.
 const KNOWN_STATS := [
 	"move_speed", "jump_force", "gravity_scale",
-	"max_health", "damage", "fire_rate", "bullet_speed", "bullet_scale",
+	"max_health", "damage", "fire_interval", "bullet_speed", "bullet_scale",
 	"bullet_bounces", "bullet_homing", "lifesteal",
 	"shield_charges", "knockback_force", "explosion_radius",
 ]
@@ -118,6 +118,20 @@ func _test_buckshot_and_heavy_rounds_carry_positive_deltas() -> void:
 
 	var heavy: StatCardEffect = by_id["heavy_rounds"].effect
 	assert_true(heavy.deltas.get("knockback_force", 0.0) > 0.0, "Heavy Rounds adds knockback_force")
+
+
+func _test_rapid_fire_shortens_the_fire_interval() -> void:
+	# Under interval semantics (#125) "fire faster" is a *negative* delta: it
+	# shaves seconds off the gap between shots. A positive delta would slow fire.
+	var by_id := {}
+	for card in BaseCards.build():
+		by_id[card.id] = card
+
+	assert_true(by_id.has("rapid_fire"), "Rapid Fire card exists")
+	var rapid: StatCardEffect = by_id["rapid_fire"].effect
+	assert_true(
+		rapid.deltas.get("fire_interval", 0.0) < 0.0,
+		"Rapid Fire shortens fire_interval (negative delta speeds up firing)")
 
 
 # --- StatCardEffect --------------------------------------------------------
