@@ -12,6 +12,13 @@ var bullet_homing: float = 0.0
 var lifesteal: float = 0.0
 var knockback_force: float = 0.0
 var explosion_radius: float = 0.0
+## Explosion feel (#52): the blast deals `explosion_damage_factor × damage` to
+## splash victims, and — when the bullet itself knocks back — a radial impulse of
+## `explosion_knockback_factor × knockback_force`. Both are registered, card-
+## tunable stats (default 0.5) carried onto the ShotSpec so pre-shoot effects can
+## override them per shot.
+var explosion_damage_factor: float = 0.5
+var explosion_knockback_factor: float = 0.5
 ## Magazine capacity in rounds and the idle time (seconds since the last shot)
 ## after which the magazine snaps back to full (#113). Both are registered,
 ## card-tunable stats; `reload_time` is a duration, so a smaller value reloads
@@ -55,6 +62,8 @@ func apply_stats(stats: Dictionary) -> void:
 	lifesteal      = stats.get("lifesteal",        lifesteal)
 	knockback_force = stats.get("knockback_force",  knockback_force)
 	explosion_radius = stats.get("explosion_radius", explosion_radius)
+	explosion_damage_factor = stats.get("explosion_damage_factor", explosion_damage_factor)
+	explosion_knockback_factor = stats.get("explosion_knockback_factor", explosion_knockback_factor)
 	magazine_size  = int(stats.get("magazine_size", float(magazine_size)))
 	reload_time    = stats.get("reload_time",       reload_time)
 
@@ -223,6 +232,7 @@ func _build_shot_spec() -> ShotSpec:
 	return ShotSpec.new(
 		damage, bullet_speed, bullet_scale, bullet_bounces,
 		bullet_homing, lifesteal, knockback_force, explosion_radius,
+		explosion_damage_factor, explosion_knockback_factor,
 	)
 
 
@@ -231,6 +241,7 @@ func _spawn_projectile(spec: ShotSpec, direction: Vector2, net_id: String) -> Pr
 	proj.setup(
 		direction, spec.speed, spec.damage, spec.scale, spec.bounces, spec.lifesteal,
 		get_parent(), spec.homing, spec.knockback, spec.explosion_radius,
+		spec.explosion_damage_factor, spec.explosion_knockback_factor,
 	)
 	proj.net_id = net_id
 	# Hit detection and damage are host-only (#27): every projectile spawned on

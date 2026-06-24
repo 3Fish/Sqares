@@ -54,6 +54,12 @@ var homing: float = 0.0
 var lifesteal: float = 0.0
 var knockback: float = 0.0
 var explosion_radius: float = 0.0
+## Explosion feel (#52), overridable per-shot like the other stats. The blast
+## deals `explosion_damage_factor × damage` to splash victims and, when the
+## bullet knocks back, a radial impulse of `explosion_knockback_factor ×
+## knockback`. Defaults match the registered stat defaults (0.5).
+var explosion_damage_factor: float = 0.5
+var explosion_knockback_factor: float = 0.5
 
 
 func _init(
@@ -65,6 +71,8 @@ func _init(
 	p_lifesteal: float = 0.0,
 	p_knockback: float = 0.0,
 	p_explosion_radius: float = 0.0,
+	p_explosion_damage_factor: float = 0.5,
+	p_explosion_knockback_factor: float = 0.5,
 ) -> void:
 	damage = p_damage
 	speed = p_speed
@@ -74,6 +82,8 @@ func _init(
 	lifesteal = p_lifesteal
 	knockback = p_knockback
 	explosion_radius = p_explosion_radius
+	explosion_damage_factor = p_explosion_damage_factor
+	explosion_knockback_factor = p_explosion_knockback_factor
 
 
 ## Whether this spec results in any projectile being fired. False when an effect

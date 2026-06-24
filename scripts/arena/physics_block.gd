@@ -45,6 +45,9 @@ func configure(size: Vector2) -> void:
 	mass = PhysicsModel.block_mass(size)
 	collision_layer = LAYER_BLOCK
 	collision_mask = LAYER_STATIC | LAYER_PLAYER | LAYER_BLOCK
+	# Join the physics-block group so an explosion's AoE can sweep and push it
+	# (#52 A3), the way destructible blocks join their group for blast damage.
+	add_to_group(Projectile.PHYSICS_GROUP)
 
 
 ## Flags this block as destructible (#97), giving it a size-derived health pool.

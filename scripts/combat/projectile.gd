@@ -12,6 +12,10 @@ const TARGET_GROUP := "players"
 ## group so a blast also damages nearby destructible blocks, not only the one a
 ## bullet hits directly. Destructible blocks join it at build time.
 const DESTRUCTIBLE_GROUP := "destructible_blocks"
+## Scene group of pushable physics blocks (#96). Explosion AoE sweeps this group
+## so a blast imparts a radial impulse to nearby physics blocks (#52 A3), the
+## same way it pushes one struck directly. Physics blocks join it at build time.
+const PHYSICS_GROUP := "physics_blocks"
 
 var damage: float = 25.0
 var lifesteal: float = 0.0
@@ -19,6 +23,12 @@ var bounces_remaining: int = 0
 var homing: float = 0.0
 var knockback_force: float = 0.0
 var explosion_radius: float = 0.0
+## Explosion feel (#52): splash victims take `explosion_damage_factor × damage`
+## and, when this bullet knocks back, a radial impulse of
+## `explosion_knockback_factor × knockback_force`. Defaults match the registered
+## stats (0.5) so an old call site / bare `Projectile.new()` behaves sanely.
+var explosion_damage_factor: float = 0.5
+var explosion_knockback_factor: float = 0.5
 var shooter: Node = null
 ## True for client-side instances (predicted or replicated, #27): they fly and
 ## bounce for feedback but never deal damage — hits are adjudicated host-only.
@@ -45,6 +55,8 @@ func setup(
 	p_homing: float = 0.0,
 	p_knockback: float = 0.0,
 	p_explosion_radius: float = 0.0,
+	p_explosion_damage_factor: float = 0.5,
+	p_explosion_knockback_factor: float = 0.5,
 ) -> void:
 	velocity          = direction.normalized() * speed
 	damage            = p_damage
@@ -54,6 +66,8 @@ func setup(
 	homing            = p_homing
 	knockback_force   = p_knockback
 	explosion_radius  = p_explosion_radius
+	explosion_damage_factor    = p_explosion_damage_factor
+	explosion_knockback_factor = p_explosion_knockback_factor
 	shooter           = p_shooter
 	_mass             = PhysicsModel.bullet_mass(p_scale, p_damage)
 
@@ -158,35 +172,75 @@ static func compute_homing_velocity(
 ## Deals AoE damage to every combatant within `explosion_radius` of `center`,
 ## excluding the shooter (no self-damage) and the directly-hit target (which has
 ## already taken the impact damage), and additionally damages every destructible
-## block (#97) in the blast (#103). Splash victims take the full bullet `damage`;
-## blast falloff is deferred tuning (see #26). With friendly fire off the
+## block (#97) in the blast (#103) and pushes every physics block (#96) in it
+## (#52 A3). Splash victims take `explosion_damage_factor × damage` (#52 A1), and
+## — when this bullet itself knocks back — a radial impulse away from the centre
+## scaled by `explosion_knockback_factor` (#52 A2). With friendly fire off the
 ## shooter's teammates are dropped from the splash too, so an explosion only
 ## harms enemies (#62); blocks are never team-filtered.
 func _detonate(center: Vector2, direct_target: Node) -> void:
 	var victims := filter_hostile(
 		get_tree().get_nodes_in_group(TARGET_GROUP),
 		combatant_id(shooter), GameManager.friendly_fire, GameManager.team_of)
+	splash_combatants(victims, center, direct_target)
+
+	# #103: extend the blast to destructible blocks so an explosion near one
+	# damages it, not just a bullet that strikes it directly.
+	damage_blocks_in_blast(get_tree().get_nodes_in_group(DESTRUCTIBLE_GROUP), center, direct_target)
+	# #52 A3: a knocking-back bullet's blast also pushes physics blocks in range.
+	push_blocks_in_blast(get_tree().get_nodes_in_group(PHYSICS_GROUP), center)
+
+
+## Applies the blast to every (already team-filtered) combatant in `victims`
+## within `explosion_radius` of `center`, skipping the shooter and the
+## directly-hit `direct_target`. Each victim takes `explosion_damage_factor ×
+## damage` (#52 A1) and — when this bullet itself knocks back — a radial impulse
+## scaled by `explosion_knockback_factor` (#52 A2). Split out from `_detonate` so
+## the combatant splash is unit-tested with stub combatants without a live tree
+## (the live group sweep + friendly-fire filter stays in `_detonate`).
+func splash_combatants(victims: Array, center: Vector2, direct_target: Node) -> void:
+	var splash_damage := explosion_damage(damage, explosion_damage_factor)
 	for node in victims:
 		if node == shooter or node == direct_target or not (node is Node2D):
 			continue
 		if not node.has_method("take_damage"):
 			continue
-		if is_in_blast_radius(center, (node as Node2D).global_position, explosion_radius):
-			node.take_damage(damage, shooter if is_instance_valid(shooter) else null)
+		if not is_in_blast_radius(center, (node as Node2D).global_position, explosion_radius):
+			continue
+		node.take_damage(splash_damage, shooter if is_instance_valid(shooter) else null)
+		# #52 A2: a knocking-back bullet's blast also shoves splash victims
+		# radially outward; a non-knockback bullet's blast does not.
+		if knockback_force > 0.0 and node.has_method("apply_knockback"):
+			node.apply_knockback(explosion_impulse(
+				center, (node as Node2D).global_position,
+				knockback_force, explosion_knockback_factor))
 
-	# #103: extend the blast to destructible blocks so an explosion near one
-	# damages it, not just a bullet that strikes it directly.
-	damage_blocks_in_blast(get_tree().get_nodes_in_group(DESTRUCTIBLE_GROUP), center, direct_target)
 
-
-## Applies the bullet `damage` to every destructible block in `candidates` whose
-## position lies within `explosion_radius` of `center`, skipping `direct_target`
-## (already damaged by the impact). Split out from `_detonate` so the blast→block
-## dispatch is unit-tested with real blocks without a live scene tree.
+## Applies the blast's explosion damage (`explosion_damage_factor × damage`, #52
+## A1) to every destructible block in `candidates` within `explosion_radius` of
+## `center`, skipping `direct_target` (already damaged by the impact). Split out
+## from `_detonate` so the blast→block dispatch is unit-tested with real blocks
+## without a live scene tree.
 func damage_blocks_in_blast(candidates: Array, center: Vector2, direct_target: Node) -> void:
+	var dmg := explosion_damage(damage, explosion_damage_factor)
 	for node in blast_targets_in_radius(candidates, center, explosion_radius, direct_target):
 		if node.has_method("damage_block"):
-			node.damage_block(damage)
+			node.damage_block(dmg)
+
+
+## Imparts a radial impulse (away from `center`) to every physics block in
+## `candidates` within `explosion_radius` (#52 A3), scaled by the bullet's own
+## knockback like the player splash knockback. No-op for a non-knockback bullet
+## (`knockback_force <= 0`). Split out from `_detonate` so the blast→block push is
+## unit-tested with real blocks without a live scene tree.
+func push_blocks_in_blast(candidates: Array, center: Vector2) -> void:
+	if knockback_force <= 0.0:
+		return
+	for node in blast_targets_in_radius(candidates, center, explosion_radius, null):
+		if node.has_method("receive_push"):
+			node.receive_push(explosion_impulse(
+				center, (node as Node2D).global_position,
+				knockback_force, explosion_knockback_factor))
 
 
 ## The `Node2D` members of `candidates` within `radius` of `center`, excluding
@@ -209,6 +263,28 @@ static func is_in_blast_radius(center: Vector2, point: Vector2, radius: float) -
 	if radius <= 0.0:
 		return false
 	return center.distance_squared_to(point) <= radius * radius
+
+
+## Explosion splash damage: a fraction of the bullet's own `bullet_damage` (#52
+## A1). `factor` is clamped to >= 0 so a malformed negative multiplier can't heal
+## a victim. Pure so the maths is unit-tested without a scene.
+static func explosion_damage(bullet_damage: float, factor: float) -> float:
+	return bullet_damage * maxf(factor, 0.0)
+
+
+## Radial blast impulse pushing `target_pos` away from the blast `center` (#52
+## A2/A3): a unit vector along `center -> target_pos` scaled by `base_force ×
+## factor`. Returns the zero vector when the magnitude is non-positive or the
+## target sits exactly on the centre (no defined direction). Pure so the impulse
+## maths is unit-tested without a scene.
+static func explosion_impulse(center: Vector2, target_pos: Vector2, base_force: float, factor: float) -> Vector2:
+	var magnitude := base_force * maxf(factor, 0.0)
+	if magnitude <= 0.0:
+		return Vector2.ZERO
+	var dir := target_pos - center
+	if dir == Vector2.ZERO:
+		return Vector2.ZERO
+	return dir.normalized() * magnitude
 
 
 ## Nearest living *enemy* combatant other than the shooter, or null. With
