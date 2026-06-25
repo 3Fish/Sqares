@@ -77,3 +77,10 @@ func _register_base_stats() -> void:
 	# Physics extras (available for mod cards)
 	StatRegistry.register("knockback_force", 0.0)
 	StatRegistry.register("explosion_radius",0.0)
+	# Explosion feel (#52). Splash damage is a multiple of the bullet's damage
+	# (not a flat copy) and, when the bullet itself knocks back, the blast imparts
+	# a radial impulse scaled from the bullet's knockback. Both are fractions an
+	# effect/card can tune (e.g. a bigger-blast card might lower the damage factor
+	# to 0.25); a `0.0` floor keeps a negative multiplier from inverting a blast.
+	StatRegistry.register("explosion_damage_factor",    0.5, 0.0)  # × bullet damage
+	StatRegistry.register("explosion_knockback_factor", 0.5, 0.0)  # × bullet knockback

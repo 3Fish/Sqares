@@ -78,6 +78,27 @@ func _test_destructible_blocks_join_the_blast_group_others_do_not() -> void:
 	arena.free()
 
 
+func _test_physics_blocks_join_the_push_group_others_do_not() -> void:
+	# Mirrors the destructible-group test for the AoE *push* sweep (#52 A3): only
+	# pushable physics blocks join PHYSICS_GROUP, regardless of destructibility.
+	var data: ArenaData = ArenaDataScript.new()
+	data.add_platform(Vector2(0, 0), Vector2(64, 64))                              # 0: plain static
+	data.add_platform(Vector2(100, 0), Vector2(64, 64), Color.WHITE, true, false) # 1: physics only
+	data.add_platform(Vector2(200, 0), Vector2(64, 64), Color.WHITE, false, true) # 2: destructible static
+	data.add_platform(Vector2(300, 0), Vector2(64, 64), Color.WHITE, true, true)  # 3: physics + destructible
+	var arena := ArenaBuilder.build(data)
+
+	assert_false(arena.get_node("Platform0").is_in_group(Projectile.PHYSICS_GROUP),
+		"a plain static platform is not in the push group")
+	assert_true(arena.get_node("Platform1").is_in_group(Projectile.PHYSICS_GROUP),
+		"a physics-only block joins the push group")
+	assert_false(arena.get_node("Platform2").is_in_group(Projectile.PHYSICS_GROUP),
+		"a destructible static (immovable) block is not in the push group")
+	assert_true(arena.get_node("Platform3").is_in_group(Projectile.PHYSICS_GROUP),
+		"a physics + destructible block joins the push group")
+	arena.free()
+
+
 # --- Dispatch: damage_blocks_in_blast damages the right blocks ---------------
 
 func _test_blast_damages_in_range_blocks_and_spares_out_of_range() -> void:
