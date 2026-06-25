@@ -323,17 +323,22 @@ func _is_damage_authority() -> bool:
 
 func _handle_shoot(input: NetPlayerInput) -> void:
 	if not input.shoot:
-		# Releasing the trigger abandons any delayed shot still charging (#113).
+		# Releasing the trigger abandons any delayed shot still charging (#113), and
+		# on a client drops any re-timed prediction of a host-delayed shot (#121) so
+		# it never spawns an orphan the host won't broadcast.
 		weapon.clear_pending()
+		NetReplicator.clear_client_pending()
 		return
 	match net_role:
 		NetRole.PREDICTED:
 			# Fire a local visual-only shot immediately for responsiveness; the
 			# host validates the intent and replicates the authoritative
-			# projectile back, echoing the predicted instance's id (#27).
-			var predicted := weapon.try_fire(input.aim)
-			if predicted:
-				NetReplicator.send_fire_intent(self, predicted, input.aim)
+			# projectile back, echoing the predicted instance's id (#27). A pure
+			# client runs no effects, so its shot is always FIRED or REJECTED, never
+			# SCHEDULED — the host decides any delay and acks it back (#121).
+			var result := weapon.try_fire(input.aim)
+			if result.is_fired():
+				NetReplicator.send_fire_intent(self, result.projectile, input.aim)
 		NetRole.SIMULATED:
 			pass  # the host fires on the client's reliable fire intent instead
 		_:
