@@ -59,6 +59,15 @@ var _input_queues: Dictionary = {}
 var _last_processed: Dictionary = {}
 ## Client: predicted projectiles awaiting host confirmation: net_id -> Projectile.
 var _predicted_projectiles: Dictionary = {}
+## Client: aim + owner kept per predicted shot (net_id -> {aim, player_id}) so a
+## shot the host turns out to be delaying (#121) can be re-spawned in the right
+## direction once the host's "accepted-pending" ack arrives.
+var _predicted_aims: Dictionary = {}
+## Client: shots the host acked as delayed and we are re-timing locally (#121).
+## Each entry is {net_id, aim, player_id, remaining}; advanced every physics tick
+## and spawned (visual-only) when `remaining` hits zero, to be adopted by the
+## host's later projectile broadcast under the same id.
+var _client_pending: Array = []
 ## Client: counter feeding client-generated projectile ids.
 var _projectile_counter: int = 0
 ## Newest snapshot applied on this client (stale packets are dropped by tick).
@@ -73,7 +82,12 @@ func _ready() -> void:
 		NetworkManager.lobby_changed.connect(_on_lobby_changed)
 
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
+	# A client re-times its prediction of any host-delayed shot (#121); the host
+	# drives the snapshot cadence below.
+	if NetworkManager.is_client():
+		_advance_client_pending(delta)
+		return
 	if not NetworkManager.is_host() or _players.is_empty():
 		return
 	_tick += 1
@@ -108,6 +122,8 @@ func clear_players() -> void:
 		if is_instance_valid(proj):
 			proj.queue_free()
 	_predicted_projectiles.clear()
+	_predicted_aims.clear()
+	_client_pending.clear()
 
 
 ## Full reset to the offline state (e.g. after a disconnect).
@@ -227,6 +243,10 @@ func send_fire_intent(player: Node, predicted: Node, direction: Vector2) -> void
 	var net_id := make_projectile_id(multiplayer.get_unique_id(), _projectile_counter)
 	predicted.set("net_id", net_id)
 	_predicted_projectiles[net_id] = predicted
+	# Remember the aim + shooter so that, if the host acks this shot as delayed
+	# (#121), we can re-spawn the prediction in the same direction when our mirrored
+	# timer elapses. Cleared once the shot is confirmed, rejected, or re-timed.
+	_predicted_aims[net_id] = {"aim": direction, "player_id": int(player.get("player_id"))}
 	_host_receive_fire_intent.rpc_id(NetworkManager.HOST_PEER_ID, {
 		"net_id": net_id,
 		"player_id": player.get("player_id"),
@@ -250,11 +270,36 @@ func _host_receive_fire_intent(data: Dictionary) -> void:
 	)
 	# try_fire re-checks the host-side cooldown, so a rate-hacked client still
 	# fires no faster than its authoritative weapon allows.
-	var proj = player.weapon.try_fire(direction.normalized(), net_id) if valid else null
-	if proj == null and net_id != "":
-		_client_reject_projectile.rpc_id(sender, net_id)
-	# On success the weapon's spawn path broadcasts the projectile to everyone
-	# (the same path the host's own shots take), echoing `net_id`.
+	var result: FireResult = player.weapon.try_fire(direction.normalized(), net_id) if valid else FireResult.rejected()
+	match fire_intent_response(result.outcome, net_id):
+		"accept_pending":
+			# #121: the shot is accepted but delayed. Ack it (carrying the delay) so
+			# the client keeps/re-times its prediction instead of dropping it; the
+			# eventual projectile broadcast (echoing `net_id`) adopts it. Without
+			# this ack a delayed shot looked identical to a rejection.
+			_client_accept_pending_projectile.rpc_id(sender, net_id, result.delay)
+		"reject":
+			_client_reject_projectile.rpc_id(sender, net_id)
+		_:
+			# "broadcast": a FIRED shot already broadcast from the weapon's spawn
+			# path (the same path the host's own shots take), echoing `net_id`.
+			# "ignore": an invalid/host-own shot with no client prediction to answer.
+			pass
+
+
+## How the host should answer a fire intent given the `try_fire` outcome and the
+## shot's `net_id` (#121). Pure so the protocol decision is unit-testable:
+## - SCHEDULED -> "accept_pending" (ack the delay, keep the client's prediction)
+## - REJECTED  -> "reject" when a client predicted it (`net_id` set), else "ignore"
+## - FIRED     -> "broadcast" (the spawn path already replicated it)
+static func fire_intent_response(outcome: int, net_id: String) -> String:
+	match outcome:
+		FireResult.Outcome.SCHEDULED:
+			return "accept_pending"
+		FireResult.Outcome.REJECTED:
+			return "reject" if net_id != "" else "ignore"
+		_:
+			return "broadcast"
 
 
 ## Replicates a host-spawned authoritative projectile to every client.
@@ -289,6 +334,11 @@ func _client_spawn_projectile(data: Dictionary) -> void:
 	var net_id := str(data.get("net_id", ""))
 	var pos := NetPlayerInput.to_vec2(data.get("position", null))
 	var vel := NetPlayerInput.to_vec2(data.get("velocity", null))
+	# The authoritative shot has landed, so this id is resolved: drop any leftover
+	# re-timing state for it (#121) in case the broadcast beat our mirrored delay
+	# timer — otherwise the pending entry would spawn a duplicate later.
+	_predicted_aims.erase(net_id)
+	_drop_client_pending(net_id)
 	if net_id != "" and _predicted_projectiles.has(net_id):
 		# Our own predicted shot, confirmed: adopt the authoritative state onto
 		# the existing instance instead of spawning a duplicate.
@@ -318,8 +368,101 @@ func _client_reject_projectile(net_id: String) -> void:
 	# The host refused the shot (cooldown / dead / invalid): undo the prediction.
 	var predicted = _predicted_projectiles.get(net_id)
 	_predicted_projectiles.erase(net_id)
+	_predicted_aims.erase(net_id)
+	_drop_client_pending(net_id)
 	if predicted != null and is_instance_valid(predicted):
 		predicted.queue_free()
+
+
+# ---------------------------------------------------------------------------
+# Delayed shots: host-acked, client-re-timed prediction (#121)
+# ---------------------------------------------------------------------------
+
+@rpc("authority", "call_remote", "reliable")
+func _client_accept_pending_projectile(net_id: String, delay: float) -> void:
+	# #121: the host accepted this shot but is delaying its spawn by `delay`
+	# seconds. Our instant prediction fired too early, so drop it and re-time a
+	# visual-only re-spawn (mirroring the host's scheduler) that the host's later
+	# projectile broadcast adopts under the same id.
+	var premature = _predicted_projectiles.get(net_id)
+	_predicted_projectiles.erase(net_id)
+	if premature != null and is_instance_valid(premature):
+		premature.queue_free()
+	var meta: Dictionary = _predicted_aims.get(net_id, {})
+	_predicted_aims.erase(net_id)
+	_client_pending.append({
+		"net_id": net_id,
+		"aim": meta.get("aim", Vector2.ZERO),
+		"player_id": int(meta.get("player_id", -1)),
+		"remaining": maxf(delay, 0.0),
+	})
+
+
+## Advances the client's re-timed delayed predictions and spawns the ones whose
+## mirrored timer elapsed this tick (#121).
+func _advance_client_pending(delta: float) -> void:
+	if _client_pending.is_empty():
+		return
+	var stepped := advance_client_pending(_client_pending, delta)
+	_client_pending = stepped["waiting"]
+	for entry in stepped["ready"]:
+		_spawn_client_pending(entry)
+
+
+## Counts down each pending delayed prediction by `delta`, partitioning them into
+## the ones ready to spawn (`remaining` reached zero) and the ones still waiting.
+## Pure (entries are copied, the input array is untouched) so the re-timing
+## cadence is unit-testable, mirroring the host-side `Weapon._advance_pending`.
+static func advance_client_pending(pending: Array, delta: float) -> Dictionary:
+	var ready: Array = []
+	var waiting: Array = []
+	for entry in pending:
+		var e: Dictionary = (entry as Dictionary).duplicate()
+		e["remaining"] = float(e.get("remaining", 0.0)) - delta
+		if e["remaining"] <= 0.0:
+			ready.append(e)
+		else:
+			waiting.append(e)
+	return {"ready": ready, "waiting": waiting}
+
+
+## Spawns one re-timed delayed prediction (visual-only) through the shooter's
+## weapon, registering it under its `net_id` so the host's broadcast adopts it.
+## A no-op if the host's authoritative shot already resolved this id first.
+func _spawn_client_pending(entry: Dictionary) -> void:
+	var net_id := str(entry.get("net_id", ""))
+	if net_id == "" or _predicted_projectiles.has(net_id):
+		return
+	var player = _players.get(int(entry.get("player_id", -1)))
+	if player == null or not is_instance_valid(player):
+		return
+	var aim: Vector2 = entry.get("aim", Vector2.ZERO)
+	if aim == Vector2.ZERO:
+		return
+	var proj = player.weapon.spawn_predicted(aim, net_id)
+	if proj != null:
+		_predicted_projectiles[net_id] = proj
+
+
+## Removes any pending re-timed prediction for `net_id` (it was resolved by an
+## authoritative broadcast or cancelled), so it never spawns a duplicate. Pure
+## bookkeeping, no scene effect.
+func _drop_client_pending(net_id: String) -> void:
+	if net_id == "" or _client_pending.is_empty():
+		return
+	var kept: Array = []
+	for entry in _client_pending:
+		if str(entry.get("net_id", "")) != net_id:
+			kept.append(entry)
+	_client_pending = kept
+
+
+## Drops every re-timed delayed prediction (#121) — called when a client releases
+## the trigger / its player dies / the round ends, mirroring the host abandoning
+## its scheduled shots (`Weapon.clear_pending`) so no orphan bullet spawns that
+## the host will never broadcast. Off a client this is a no-op.
+func clear_client_pending() -> void:
+	_client_pending.clear()
 
 
 ## Globally unique client-generated projectile id: peer id + local counter.

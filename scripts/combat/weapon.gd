@@ -133,19 +133,27 @@ func _physics_process(delta: float) -> void:
 	_advance_pending(delta)
 
 
-## Fires in `direction` unless cooling down. Returns the spawned projectile (so
-## callers can replicate or track it, #27) — the first one for a multi-bullet
-## shot — or null when the shot was refused or cancelled. `net_id` tags a
-## host-confirmed shot with the shooter client's predicted-projectile id so the
-## broadcast can echo it.
+## Fires in `direction` unless cooling down. Returns a [FireResult] tri-state
+## (#121) so callers — chiefly the netcode fire-intent path — can tell the three
+## outcomes apart:
+## - [b]FIRED[/b]: a projectile spawned now; `result.projectile` is the first one
+##   (the first bullet of a multi-shot), the value the old `Projectile` return
+##   carried, so a caller can still replicate/track it (#27).
+## - [b]SCHEDULED[/b]: the shot was accepted but deferred by `delay` seconds (#113);
+##   `result.delay` carries the wait so the host can ack a predicting client (#121).
+##   Previously this returned `null`, indistinguishable from a rejection.
+## - [b]REJECTED[/b]: nothing fired (cooling down, no aim, cancelled, or out of ammo).
+##
+## `net_id` tags a host-confirmed shot with the shooter client's predicted-
+## projectile id so the broadcast can echo it.
 ##
 ## Before anything spawns, card effects get to reshape the shot through a mutable
 ## `ShotSpec` (#68): they may change the bullet count, override the per-bullet
 ## stats, or cancel the shot entirely. A cancelled (or zero-count) shot is a true
 ## no-op — no projectile and no cooldown consumed.
-func try_fire(direction: Vector2, net_id: String = "") -> Projectile:
+func try_fire(direction: Vector2, net_id: String = "") -> FireResult:
 	if _cooldown > 0.0 or direction == Vector2.ZERO:
-		return null
+		return FireResult.rejected()
 	var spec := _build_shot_spec()
 	# Pre-shoot effects run only where the shot is adjudicated (host/local), so a
 	# client's predicted shot keeps the default single-bullet spec — mirroring how
@@ -153,11 +161,12 @@ func try_fire(direction: Vector2, net_id: String = "") -> Projectile:
 	# Ammo is authority-side for the same reason (#113 A6): a pure client predicts
 	# its shots cooldown-gated and visual-only, and the host's ammo gate decides
 	# truth (rejecting a predicted shot it had no rounds for), so the client never
-	# tracks ammo locally.
+	# tracks ammo locally. A consequence is that a pure client's `spec.delay` stays
+	# 0 (no effects run), so SCHEDULED only ever arises on the authority side (#121).
 	if not NetworkManager.is_client():
 		EffectEngine.notify_before_shoot(get_parent(), self, spec, direction)
 		if not AmmoModel.can_fire(_ammo, spec.ammo_cost):
-			return null  # #113 A3: magazine can't cover the cost — shot denied.
+			return FireResult.rejected()  # #113 A3: magazine can't cover the cost.
 		if spec.ammo_cost > 0:
 			# #113 A5: ammo is consumed by the chain's resulting cost even when an
 			# effect cancels the shot (a free cancel must also zero ammo_cost).
@@ -165,21 +174,33 @@ func try_fire(direction: Vector2, net_id: String = "") -> Projectile:
 			_ammo = AmmoModel.consume(_ammo, spec.ammo_cost)
 			_idle_time = 0.0
 	if not spec.fires():
-		return null
+		return FireResult.rejected()
 	# Cooldown is charged from the trigger pull, never the (possibly delayed) spawn
 	# (#113): a delayed shot still gates the next trigger from now. fire_interval is
 	# the gap in seconds (#125), used directly; `maxf(_, 0.0)` guards a (clamped)
 	# `0` interval — the next pull then fires on the very next physics tick.
 	_cooldown = maxf(fire_interval, 0.0)
 	if spec.delay > 0.0:
-		# Schedule the spawn for `delay` seconds from now. Online replication of a
-		# delayed shot rides the netcode work (#113 A6); for now a delayed shot
-		# returns null (no synchronous projectile to echo to a fire intent).
+		# Schedule the spawn for `delay` seconds from now. The host carries the
+		# shooter's `net_id` so the eventual broadcast echoes it (#121), letting a
+		# predicting client adopt its re-timed prediction.
 		_pending.append({
 			"spec": spec, "direction": direction, "net_id": net_id, "remaining": spec.delay,
 		})
-		return null
-	return _fire_spec(spec, direction, net_id)
+		return FireResult.scheduled(spec.delay)
+	return FireResult.fired(_fire_spec(spec, direction, net_id))
+
+
+## Spawns a single visual-only predicted bullet for a client's re-timed delayed
+## shot (#121): when the host acks a scheduled shot, the client drops its premature
+## instant prediction and re-spawns through here once its mirrored delay elapses,
+## tagging the bullet with `net_id` so the host's authoritative broadcast adopts
+## it. Reuses the normal spawn path, so on a client every projectile is visual-
+## only and the host-side effect/broadcast steps in `_spawn_projectile` are
+## skipped — it is the shooter's default single-bullet shot, matching the spec the
+## client predicts with locally (effects are authority-side, #82).
+func spawn_predicted(direction: Vector2, net_id: String) -> Projectile:
+	return _spawn_projectile(_build_shot_spec(), direction, net_id)
 
 
 ## Spawns every bullet of a (final, firing) spec in `direction` and returns the
