@@ -205,3 +205,38 @@ func _test_advance_client_pending_empty_is_noop() -> void:
 	var stepped := NetReplicatorScript.advance_client_pending([], 0.5)
 	assert_eq(stepped["ready"].size(), 0, "no shots ready from an empty queue")
 	assert_eq(stepped["waiting"].size(), 0, "nothing waiting either")
+
+
+# --- pending-drop bookkeeping (instance, #121 / #140) ----------------------
+
+func _test_clear_client_pending_drops_every_entry() -> void:
+	# The mechanism a client's death / trigger-release / round-end uses to abandon
+	# its re-timed delayed-shot predictions (#140): mirroring the host's
+	# `Weapon.clear_pending()`, every pending entry is dropped so none spawns an
+	# orphan bullet the host will never broadcast.
+	rep._client_pending = [_make_pending("a", 0.2), _make_pending("b", 0.5)]
+	rep.clear_client_pending()
+	assert_eq(rep._client_pending.size(), 0, "all pending re-timings dropped on death/release")
+
+
+func _test_clear_client_pending_empty_is_safe() -> void:
+	# A no-op on the host (its `_client_pending` is always empty) and on a client
+	# with nothing pending, so the unconditional call from `Player._on_died` (#140)
+	# is safe on every peer.
+	rep.clear_client_pending()
+	assert_eq(rep._client_pending.size(), 0, "clearing an empty queue stays empty")
+
+
+func _test_drop_client_pending_removes_only_matching_id() -> void:
+	# Resolving one shot's id (its authoritative broadcast landed) drops just that
+	# entry; the still-waiting predictions are kept so they can spawn (#121).
+	rep._client_pending = [_make_pending("a", 0.2), _make_pending("b", 0.5)]
+	rep._drop_client_pending("a")
+	assert_eq(rep._client_pending.size(), 1, "only the matching entry is dropped")
+	assert_eq(rep._client_pending[0]["net_id"], "b", "the unrelated pending shot is kept")
+
+
+func _test_drop_client_pending_unknown_id_keeps_all() -> void:
+	rep._client_pending = [_make_pending("a", 0.2)]
+	rep._drop_client_pending("missing")
+	assert_eq(rep._client_pending.size(), 1, "an id with no pending entry leaves the queue intact")
