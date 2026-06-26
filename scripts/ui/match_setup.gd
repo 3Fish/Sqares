@@ -35,9 +35,18 @@ var _friendly_fire_toggle: CheckButton
 # for team-grouping modes (Teams); colours don't form teams in FFA (#134 A4).
 var _teams_preview: Label
 
+# Saved match configurations (#135).
+var _config_name_edit: LineEdit
+var _config_picker: OptionButton
+var _overwrite_dialog: ConfirmationDialog
+
 # Parallel arrays: picker item index -> registered id.
 var _mode_ids: Array = []
 var _arena_ids: Array = []
+# Saved-config picker item index -> stored display name (#135).
+var _config_names: Array = []
+# Name awaiting an overwrite-confirm answer (#135 A3).
+var _pending_save_name: String = ""
 
 # Staged mode-specific options (written into MatchConfig on start).
 var _friendly_fire: bool = true
@@ -108,6 +117,9 @@ func _ready() -> void:
 	_refresh_player_rows()
 	_refresh_teams_preview()
 
+	# Saved match configurations (#135).
+	_build_config_rows(vbox)
+
 	var start := Button.new()
 	start.text = "Start"
 	start.pressed.connect(_on_start_pressed)
@@ -120,10 +132,6 @@ func _ready() -> void:
 
 
 func _on_start_pressed() -> void:
-	var mode_id: String = String(_mode_ids[_mode_picker.selected]) \
-		if _mode_picker.selected >= 0 else MatchConfig.DEFAULT_MODE
-	var arena_id: String = String(_arena_ids[_arena_picker.selected]) \
-		if _arena_picker.selected >= 0 else MatchConfig.DEFAULT_ARENA
 	# Player picker index 0 -> 2 players, 1 -> 3, 2 -> 4.
 	var players := active_player_count(_player_picker.selected)
 	var rounds := int(_rounds_picker.value)
@@ -134,12 +142,151 @@ func _on_start_pressed() -> void:
 	for i in players:
 		names.append(_name_edits[i].text)
 		colors.append(_color_pickers[i].selected)
-	MatchConfig.configure(mode_id, players, rounds, arena_id, _friendly_fire, names, colors)
+	MatchConfig.configure(_current_mode_id(), players, rounds, _current_arena_id(), _friendly_fire, names, colors)
 	get_tree().change_scene_to_file(MATCH_SCENE)
 
 
 func _on_back_pressed() -> void:
 	get_tree().change_scene_to_file(MAIN_MENU_SCENE)
+
+
+## The currently-selected game-mode id, or the default when nothing is selected.
+func _current_mode_id() -> String:
+	return String(_mode_ids[_mode_picker.selected]) \
+		if _mode_picker.selected >= 0 else MatchConfig.DEFAULT_MODE
+
+
+## The currently-selected arena id, or the default when nothing is selected.
+func _current_arena_id() -> String:
+	return String(_arena_ids[_arena_picker.selected]) \
+		if _arena_picker.selected >= 0 else MatchConfig.DEFAULT_ARENA
+
+
+# ---------------------------------------------------------------------------
+# Saved match configurations (#135)
+# ---------------------------------------------------------------------------
+
+## Builds the save/load row: a name field + Save button, and a load picker with
+## Load + Delete buttons. A saved config is a reusable match *template* (mode +
+## general & mode-specific options); player count and per-player info are not
+## persisted (maintainer A2), so loading a config leaves the current roster
+## selection untouched.
+func _build_config_rows(parent: Node) -> void:
+	var heading := Label.new()
+	heading.text = "Saved Configs"
+	parent.add_child(heading)
+
+	var save_row := HBoxContainer.new()
+	save_row.add_theme_constant_override("separation", 8)
+	_config_name_edit = LineEdit.new()
+	_config_name_edit.placeholder_text = "Config name"
+	_config_name_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	save_row.add_child(_config_name_edit)
+	var save_button := Button.new()
+	save_button.text = "Save"
+	save_button.pressed.connect(_on_save_config_pressed)
+	save_row.add_child(save_button)
+	parent.add_child(save_row)
+
+	var load_row := HBoxContainer.new()
+	load_row.add_theme_constant_override("separation", 8)
+	_config_picker = OptionButton.new()
+	_config_picker.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	load_row.add_child(_config_picker)
+	var load_button := Button.new()
+	load_button.text = "Load"
+	load_button.pressed.connect(_on_load_config_pressed)
+	load_row.add_child(load_button)
+	var delete_button := Button.new()
+	delete_button.text = "Delete"
+	delete_button.pressed.connect(_on_delete_config_pressed)
+	load_row.add_child(delete_button)
+	parent.add_child(load_row)
+
+	# A name collision prompts before clobbering an existing file (A3).
+	_overwrite_dialog = ConfirmationDialog.new()
+	_overwrite_dialog.title = "Overwrite config?"
+	_overwrite_dialog.confirmed.connect(_on_overwrite_confirmed)
+	add_child(_overwrite_dialog)
+
+	_refresh_config_list()
+
+
+## Repopulates the load picker from the stored configs on disk.
+func _refresh_config_list() -> void:
+	_config_names = MatchConfigStore.list_names()
+	_config_picker.clear()
+	for name: String in _config_names:
+		_config_picker.add_item(name)
+	if not _config_names.is_empty():
+		_config_picker.select(0)
+
+
+func _on_save_config_pressed() -> void:
+	# Blank name -> an auto-generated, non-colliding default (A3).
+	var name := _config_name_edit.text.strip_edges()
+	if name.is_empty():
+		name = MatchConfig.default_config_name(_config_names)
+		_config_name_edit.text = name
+	# A name that slugifies to nothing (e.g. only punctuation) can't be saved.
+	if MatchConfigStore.sanitize_name(name).is_empty():
+		return
+	if MatchConfigStore.exists(name):
+		_pending_save_name = name
+		_overwrite_dialog.dialog_text = "A config named \"%s\" already exists. Overwrite it?" % name
+		_overwrite_dialog.popup_centered()
+		return
+	_do_save_config(name)
+
+
+func _on_overwrite_confirmed() -> void:
+	if not _pending_save_name.is_empty():
+		_do_save_config(_pending_save_name)
+		_pending_save_name = ""
+
+
+## Serialises the current selection (mode + general & mode-specific options) and
+## writes it under `name`, then refreshes the load picker and selects the saved
+## entry.
+func _do_save_config(name: String) -> void:
+	var data := MatchConfig.to_dict(
+		_current_mode_id(), int(_rounds_picker.value), _current_arena_id(), _friendly_fire)
+	if MatchConfigStore.save(name, data) != OK:
+		return
+	_refresh_config_list()
+	var idx := _config_names.find(name)
+	if idx >= 0:
+		_config_picker.select(idx)
+
+
+func _on_load_config_pressed() -> void:
+	if _config_picker.selected < 0 or _config_picker.selected >= _config_names.size():
+		return
+	var data := MatchConfigStore.load_config(String(_config_names[_config_picker.selected]))
+	if data.is_empty():
+		# File vanished (e.g. deleted externally) — keep the list honest.
+		_refresh_config_list()
+		return
+	_apply_config(MatchConfig.normalize_dict(data, _mode_ids, _arena_ids))
+
+
+## Applies a normalised config dict to the setup controls (#135). Mode/arena are
+## already resolved to registered ids and wins clamped by `normalize_dict`, so the
+## pickers always land on a real entry. Player count is intentionally left as-is.
+func _apply_config(norm: Dictionary) -> void:
+	_mode_picker.select(maxi(0, _mode_ids.find(String(norm["game_mode"]))))
+	_arena_picker.select(maxi(0, _arena_ids.find(String(norm["arena_id"]))))
+	_rounds_picker.value = int(norm["wins_needed"])
+	_friendly_fire = bool(norm["friendly_fire"])
+	# A loaded mode may differ from the previous one; re-evaluate the submenu.
+	_refresh_mode_options_availability()
+
+
+func _on_delete_config_pressed() -> void:
+	if _config_picker.selected < 0 or _config_picker.selected >= _config_names.size():
+		return
+	MatchConfigStore.delete(String(_config_names[_config_picker.selected]))
+	_refresh_config_list()
 
 
 # ---------------------------------------------------------------------------

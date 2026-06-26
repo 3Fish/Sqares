@@ -22,6 +22,11 @@ const DEFAULT_WINS := 5
 const DEFAULT_MODE := "ffa"
 const DEFAULT_ARENA := "crossroads"
 
+## Schema version stamped into a saved match configuration (#135). Bumped if the
+## persisted field set ever changes incompatibly; `normalize_dict` reads defaults
+## for any missing key so older files keep loading.
+const CONFIG_VERSION := 1
+
 ## Max length of a per-player name chosen in setup (#132). Blank names fall back
 ## to the default "Player N"; longer entries are truncated.
 const MAX_NAME_LENGTH := 30
@@ -190,3 +195,52 @@ static func resolve_choice(requested: String, available: Array, fallback: String
 	if not available.is_empty():
 		return String(available[0])
 	return fallback
+
+
+# ---------------------------------------------------------------------------
+# Saved match configurations (#135) — serialisation helpers
+# ---------------------------------------------------------------------------
+# A saved config is a reusable match *template*: the game mode plus the general
+# (rounds, arena) and mode-specific (friendly fire) options. Player count and
+# per-player info are deliberately NOT persisted (maintainer A2) — a template is
+# applied on top of whatever roster the host has selected. Mode-specific options
+# beyond friendly fire (e.g. team assignment, #134) extend this dict additively.
+# Pure helpers so the schema + load-time normalisation are unit-tested without a
+# scene; the on-disk JSON side lives in `MatchConfigStore` (mirroring ArenaStore).
+
+## Serialises the persisted match-template fields into a plain dictionary (#135).
+## Wins are clamped on the way out so a saved file is always in-range.
+static func to_dict(p_mode: String, p_wins: int, p_arena: String, p_friendly_fire: bool) -> Dictionary:
+	return {
+		"version": CONFIG_VERSION,
+		"game_mode": p_mode,
+		"wins_needed": clamp_wins(p_wins),
+		"arena_id": p_arena,
+		"friendly_fire": p_friendly_fire,
+	}
+
+
+## Reads a (possibly stale or hand-edited) saved dict back into a normalised set
+## of selections (#135 A2). Mode and arena are resolved against the currently
+## registered ids — a config naming an id no longer registered falls back to a
+## sane choice rather than erroring (reusing `resolve_choice`, the same rule
+## `configure` applies to a staged selection) — wins are clamped, and friendly
+## fire is coerced to bool. Any missing key falls back to its default, so a config
+## written by an older schema still loads.
+static func normalize_dict(data: Dictionary, available_modes: Array, available_arenas: Array) -> Dictionary:
+	return {
+		"game_mode": resolve_choice(String(data.get("game_mode", DEFAULT_MODE)), available_modes, DEFAULT_MODE),
+		"wins_needed": clamp_wins(int(data.get("wins_needed", DEFAULT_WINS))),
+		"arena_id": resolve_choice(String(data.get("arena_id", DEFAULT_ARENA)), available_arenas, DEFAULT_ARENA),
+		"friendly_fire": bool(data.get("friendly_fire", true)),
+	}
+
+
+## An auto-generated default config name (#135 A3): the lowest `Config N` (N >= 1)
+## not already in `existing`, so repeated saves never silently collide. Pure so
+## the numbering is unit-tested without touching disk.
+static func default_config_name(existing: Array) -> String:
+	var n := 1
+	while ("Config %d" % n) in existing:
+		n += 1
+	return "Config %d" % n
