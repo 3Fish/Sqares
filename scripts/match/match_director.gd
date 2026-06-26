@@ -48,6 +48,10 @@ var _alive_ids: Array[int] = []
 var _match_over: bool = false
 var _round_ending: bool = false
 var _mode: GameMode = null
+## True when this match's teams were extrapolated from the per-player colours (#134,
+## local Teams play). Drives the colour-named round/match announcement. Set every
+## time the team assignment is (re)built in `_begin_match`.
+var _colors_drive_teams: bool = false
 
 ## Card effects accumulated per player slot over the match (#17). Players are
 ## re-instantiated each round, so a slot's picked effects are re-applied to its
@@ -91,12 +95,38 @@ func _ready() -> void:
 
 ## Builds the team assignment from the active mode and hands it to GameManager.
 func _begin_match() -> void:
-	var teams := _mode.assign_teams(player_count)
+	var teams := _team_assignment()
 	GameManager.setup_match(arena_id, player_count, wins_needed, teams, _mode.id, friendly_fire)
 	if NetworkManager.is_host():
 		# Agree the match RNG up front so synced draws/rolls (#24) derive the
 		# same streams on every peer — the seed transport #64/#66 parked here.
 		NetReplicator.broadcast_seed(RNGService.seed_match())
+
+
+## The `player_id -> team_id` map for this match. In local Teams play with colours
+## staged from the setup screen, the teams are extrapolated from the per-player
+## colours (#134 / #132 A4): same colour -> same team. Every other case keeps the
+## mode's own assignment so behaviour is unchanged — FFA (each player their own
+## team, #134 A4), any networked match (a peer's chosen colour isn't replicated
+## yet, #66/#82), and a direct/editor-playtest load (no colours staged) all fall
+## back to `_mode.assign_teams`.
+func _team_assignment() -> Dictionary:
+	_colors_drive_teams = _mode.id == &"teams" \
+		and not NetworkManager.is_networked() \
+		and not MatchConfig.player_colors.is_empty()
+	if _colors_drive_teams:
+		return MatchConfig.teams_from_colors(MatchConfig.player_colors, player_count)
+	return _mode.assign_teams(player_count)
+
+
+## Display label for a team in round/match announcements. A colour-derived Teams
+## match names the team by its colour ("Team Babyblue wins!", #134 / #132 A4) since
+## the team id is the palette colour index; every other mode keeps its own label
+## (FFA: "Player N"; round-robin Teams: "Team N").
+func _team_label(team_id: int) -> String:
+	if _colors_drive_teams:
+		return "Team %s" % PlayerPalette.name_at(team_id)
+	return _mode.team_label(team_id)
 
 
 func _start_round() -> void:
@@ -210,11 +240,11 @@ func _end_round() -> void:
 		_match_over = true
 		_broadcast("match_end", {"winner_id": winner_id})
 		_hud.show_center(
-			"%s wins the match!\n[any key to replay]" % _mode.team_label(winning_team)
+			"%s wins the match!\n[any key to replay]" % _team_label(winning_team)
 		)
 		return
 
-	var msg := "%s wins the round!" % _mode.team_label(winning_team) if winner_id >= 0 else "Draw!"
+	var msg := "%s wins the round!" % _team_label(winning_team) if winner_id >= 0 else "Draw!"
 	_hud.show_center(msg)
 	await get_tree().create_timer(2.5).timeout
 	if _match_over:
@@ -396,7 +426,7 @@ func _client_round_end(data: Dictionary) -> void:
 		if GameManager.record_win(winner_id):
 			_match_over = true
 		_hud.update_wins()
-	var msg := "%s wins the round!" % _mode.team_label(winning_team) if winner_id >= 0 else "Draw!"
+	var msg := "%s wins the round!" % _team_label(winning_team) if winner_id >= 0 else "Draw!"
 	_hud.show_center(msg)
 
 
@@ -404,7 +434,7 @@ func _client_match_end(data: Dictionary) -> void:
 	_match_over = true
 	var winner_id := int(data.get("winner_id", -1))
 	var team := GameManager.team_for(winner_id) if winner_id >= 0 else -1
-	_hud.show_center("%s wins the match!\n[host decides on a replay]" % _mode.team_label(team))
+	_hud.show_center("%s wins the match!\n[host decides on a replay]" % _team_label(team))
 
 
 func _client_match_restart() -> void:

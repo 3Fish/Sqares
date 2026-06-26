@@ -31,6 +31,9 @@ var _arena_picker: OptionButton
 var _mode_options_button: Button
 var _mode_options_popup: PopupPanel
 var _friendly_fire_toggle: CheckButton
+# Read-only preview of how the chosen colours group into teams (#134). Visible only
+# for team-grouping modes (Teams); colours don't form teams in FFA (#134 A4).
+var _teams_preview: Label
 
 # Parallel arrays: picker item index -> registered id.
 var _mode_ids: Array = []
@@ -77,6 +80,10 @@ func _ready() -> void:
 	# Per-player name + colour rows (#132).
 	_build_player_rows(vbox)
 
+	# Teams-from-colours preview (#134): shows how the chosen colours group into
+	# teams when a team-grouping mode is selected.
+	_build_teams_preview(vbox)
+
 	# Mode-specific options submenu (#133). Only enabled for modes that group
 	# players into shared teams (so friendly fire is meaningful); inert for FFA.
 	_mode_options_button = Button.new()
@@ -99,6 +106,7 @@ func _ready() -> void:
 	# Show only the player rows for the selected count, and keep them in sync.
 	_player_picker.item_selected.connect(_on_player_count_selected)
 	_refresh_player_rows()
+	_refresh_teams_preview()
 
 	var start := Button.new()
 	start.text = "Start"
@@ -177,6 +185,8 @@ func _build_player_rows(parent: Node) -> void:
 		# Live-preview the chosen colour in the swatch beside the picker.
 		color_picker.item_selected.connect(
 			func(index: int) -> void: swatch.color = PlayerPalette.color_at(index))
+		# A colour change can re-group the teams, so refresh the Teams preview (#134).
+		color_picker.item_selected.connect(func(_index: int) -> void: _refresh_teams_preview())
 
 		parent.add_child(row)
 		_player_rows.append(row)
@@ -186,6 +196,7 @@ func _build_player_rows(parent: Node) -> void:
 
 func _on_player_count_selected(_index: int) -> void:
 	_refresh_player_rows()
+	_refresh_teams_preview()
 
 
 ## Shows exactly the rows for the currently-selected player count (index 0 -> 2
@@ -204,6 +215,60 @@ static func active_player_count(picker_index: int) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Teams-from-colours preview (#134)
+# ---------------------------------------------------------------------------
+
+## Builds the read-only line that previews how the per-player colours group into
+## teams. `_refresh_teams_preview` shows it only for team-grouping modes and hides
+## it for FFA, where colours are cosmetic and don't form teams (#134 A4).
+func _build_teams_preview(parent: Node) -> void:
+	_teams_preview = Label.new()
+	_teams_preview.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_teams_preview.custom_minimum_size = Vector2(320, 0)
+	_teams_preview.add_theme_font_size_override("font_size", 13)
+	parent.add_child(_teams_preview)
+
+
+## Updates the Teams preview from the current mode + player count + chosen colours.
+## Shown only when the selected mode groups players into shared teams; hidden for
+## FFA (and a no-op before the controls exist).
+func _refresh_teams_preview() -> void:
+	if _teams_preview == null:
+		return
+	var groups := mode_groups_players(_selected_mode_script(), MatchDirector.MAX_PLAYERS)
+	_teams_preview.visible = groups
+	if not groups:
+		return
+	var count := active_player_count(_player_picker.selected)
+	var colors: Array = []
+	for i in count:
+		colors.append(_color_pickers[i].selected)
+	_teams_preview.text = teams_preview_text(colors, count)
+
+
+## A one-line summary of how `colors` group `player_count` players into teams (#134):
+## the team count followed by each colour group and the players (P1..) in it, in
+## palette order. Mirrors `MatchConfig.teams_from_colors` (same per-slot colour
+## resolution). Pure so the formatting is unit-tested without booting the screen.
+static func teams_preview_text(colors: Array, player_count: int) -> String:
+	var groups: Dictionary = {}  # palette index -> Array[int] of player slots
+	for i in player_count:
+		var ci := MatchConfig.color_index_for(colors, i)
+		var slots: Array = groups.get(ci, [])
+		slots.append(i)
+		groups[ci] = slots
+	var keys: Array = groups.keys()
+	keys.sort()
+	var parts: Array = []
+	for ci: int in keys:
+		var who: Array = []
+		for slot: int in groups[ci]:
+			who.append("P%d" % (slot + 1))
+		parts.append("%s (%s)" % [PlayerPalette.name_at(ci), ", ".join(who)])
+	return "Teams from colour — %d team(s): %s" % [groups.size(), "  ".join(parts)]
+
+
+# ---------------------------------------------------------------------------
 # Mode-specific options submenu (#133)
 # ---------------------------------------------------------------------------
 
@@ -219,6 +284,7 @@ func _on_friendly_fire_toggled(pressed: bool) -> void:
 
 func _on_mode_selected(_index: int) -> void:
 	_refresh_mode_options_availability()
+	_refresh_teams_preview()
 
 
 ## Enables the submenu button only when the selected mode groups players into

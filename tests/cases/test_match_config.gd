@@ -133,3 +133,55 @@ func _test_configure_defaults_identity_when_omitted() -> void:
 	MatchConfig.configure("ffa", 2, 3, "crossroads")
 	assert_eq(MatchConfig.player_names, ["Player 1", "Player 2"], "names default per slot")
 	assert_eq(MatchConfig.player_colors, [PlayerPalette.default_index(0), PlayerPalette.default_index(1)], "colours default per slot")
+
+
+# ---------------------------------------------------------------------------
+# Colour-derived teams (#134)
+# ---------------------------------------------------------------------------
+
+func _test_teams_from_colors_groups_matching_colours() -> void:
+	# P1+P3 share colour 0, P2+P4 share colour 1 -> two 2-player teams keyed by the
+	# palette index, so the team id can name the team by its colour (#132 A4).
+	var teams := MatchConfig.teams_from_colors([0, 1, 0, 1], 4)
+	assert_eq(teams, {0: 0, 1: 1, 2: 0, 3: 1}, "matching colours form shared teams (team id == colour index)")
+	assert_eq(MatchConfig.distinct_team_count([0, 1, 0, 1], 4), 2, "two distinct colours -> two teams")
+
+
+func _test_teams_from_colors_distinct_colours_are_solo_teams() -> void:
+	# Distinct colours per player -> every player on their own team (the N-team / ~FFA
+	# end of the 2..N range, #134 A2).
+	var teams := MatchConfig.teams_from_colors([2, 5, 9], 3)
+	assert_eq(teams, {0: 2, 1: 5, 2: 9}, "distinct colours -> distinct teams")
+	assert_eq(MatchConfig.distinct_team_count([2, 5, 9], 3), 3, "three distinct colours -> three teams")
+
+
+func _test_teams_from_colors_all_same_colour_is_one_team() -> void:
+	# The degenerate input (host left every colour equal): a single team. Faithful to
+	# the colour-extrapolation model; below the intended 2..N range, but tolerated by
+	# GameManager rather than crashing (validation deferred — see PR).
+	assert_eq(MatchConfig.teams_from_colors([3, 3], 2), {0: 3, 1: 3}, "all same colour -> one shared team")
+	assert_eq(MatchConfig.distinct_team_count([3, 3], 2), 1, "one distinct colour -> one team")
+
+
+func _test_teams_from_colors_handles_short_and_wild_arrays() -> void:
+	# A short/empty array resolves each slot through the same per-slot fallback the
+	# spawn path uses (default_index), and out-of-range indices clamp to a real colour.
+	var teams := MatchConfig.teams_from_colors([], 2)
+	assert_eq(teams, {0: PlayerPalette.default_index(0), 1: PlayerPalette.default_index(1)},
+		"empty colours -> per-slot default teams")
+	assert_eq(MatchConfig.teams_from_colors([999], 1), {0: PlayerPalette.count() - 1},
+		"a wild index clamps to a real palette colour")
+
+
+func _test_teams_from_colors_feeds_game_manager_team_tracking() -> void:
+	# End-to-end: a colour-derived assignment plugs straight into the existing
+	# GameManager pipeline and tracks wins per (colour) team.
+	var teams := MatchConfig.teams_from_colors([0, 1, 0, 1], 4)  # P1,P3 = team 0; P2,P4 = team 1
+	GameManager.setup_match("crossroads", 4, 2, teams, &"teams")
+	assert_eq(GameManager.win_counts.size(), 2, "two colour teams -> two win counters")
+	assert_eq(GameManager.team_for(2), 0, "P3 shares P1's colour team")
+	assert_eq(GameManager.team_for(3), 1, "P4 shares P2's colour team")
+	var over := GameManager.record_win(2)  # P3 wins for colour team 0
+	assert_false(over, "1 of 2 wins does not end the match")
+	assert_eq(GameManager.wins_for_player(0), 1, "P1 shares the colour-team win with P3")
+	assert_eq(GameManager.wins_for_player(1), 0, "the other colour team is unaffected")
