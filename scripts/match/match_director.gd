@@ -172,7 +172,12 @@ func _spawn_arena() -> void:
 
 func _spawn_players() -> void:
 	var spawn_points: Array[Vector2] = _arena.get_spawn_points() if _arena else []
-	var positions := resolve_spawn_positions(player_count, spawn_points)
+	# Cluster teammates onto adjacent spawns (#62 A3). `team_for` falls back to a
+	# per-player team (FFA), so the helper degrades to plain placement off Teams.
+	var team_list: Array = []
+	for i in player_count:
+		team_list.append(GameManager.team_for(i))
+	var positions := resolve_team_spawn_positions(team_list, spawn_points)
 	var networked := NetworkManager.is_networked()
 	var local_slot := NetworkManager.local_slot()
 	if networked:
@@ -551,3 +556,120 @@ static func resolve_spawn_positions(count: int, spawn_points: Array[Vector2]) ->
 		var dir := 1.0 if i % 2 == 0 else -1.0
 		positions.append(base + Vector2(FALLBACK_SPACING * reuse * dir, 0.0))
 	return positions
+
+
+## Clusters teammates onto spatially-adjacent spawn points so each team starts
+## together (#62 A3). Teams must work for any count — FFA, two teams, or the
+## N-team layouts #134 enables — so rather than a fixed left/right split, each
+## team greedily claims the spawn point nearest its growing cluster, with teams
+## seeded far apart (the farthest free slot from the global centroid) so they
+## start in different regions instead of piling onto one spot. `team_of[i]` is
+## the team id of player i; the returned array is indexed by player id and reuses
+## the exact slots `resolve_spawn_positions` produces (so the fewer-spawns reuse
+## and no-spawn fan-out fallbacks are inherited unchanged). Degrades to the plain
+## spawn order whenever there is nothing to cluster — 0/1 players, or every
+## player on their own team (FFA) — so non-team play is byte-for-byte unaffected.
+## Pure (no scene tree) so the clustering is unit-tested headlessly.
+static func resolve_team_spawn_positions(team_of: Array, spawn_points: Array[Vector2]) -> Array[Vector2]:
+	var count := team_of.size()
+	var slots := resolve_spawn_positions(count, spawn_points)
+	if count <= 1:
+		return slots
+
+	# Group player ids by team, teams in first-appearance order and players in id
+	# order within a team — fully deterministic so host and client agree (#27).
+	var team_order: Array = []
+	var members: Dictionary = {}
+	for pid in count:
+		var t: int = int(team_of[pid])
+		if not members.has(t):
+			members[t] = []
+			team_order.append(t)
+		(members[t] as Array).append(pid)
+	# Nothing to cluster when every player is on their own team (FFA): keep the
+	# plain spawn order so FFA / 1v1 placement is byte-for-byte unchanged.
+	if team_order.size() >= count:
+		return slots
+
+	# Place the largest teams first so they secure a contiguous core before the
+	# smaller teams / singles fill the gaps.
+	var by_size: Array = team_order.duplicate()
+	by_size.sort_custom(func(a, b):
+		var sa: int = (members[a] as Array).size()
+		var sb: int = (members[b] as Array).size()
+		if sa != sb:
+			return sa > sb                                  # bigger team first
+		return team_order.find(a) < team_order.find(b))    # stable tie-break
+
+	var centroid := _slots_centroid(slots)
+	var taken: Array[bool] = []
+	taken.resize(slots.size())
+	taken.fill(false)
+	var slot_for_player: Dictionary = {}  # player id -> slot index
+
+	for t in by_size:
+		var ids: Array = members[t]
+		# Seed each team at the free slot farthest from the global centroid so
+		# separate teams start apart rather than all bunching in the middle.
+		var seed_idx := _farthest_free_slot(slots, taken, centroid)
+		if seed_idx < 0:
+			break
+		taken[seed_idx] = true
+		slot_for_player[ids[0]] = seed_idx
+		var cluster_sum: Vector2 = slots[seed_idx]
+		var cluster_n := 1
+		# Grow the cluster by repeatedly grabbing the free slot nearest its mean.
+		for k in range(1, ids.size()):
+			var mean := cluster_sum / float(cluster_n)
+			var next_idx := _nearest_free_slot(slots, taken, mean)
+			if next_idx < 0:
+				break
+			taken[next_idx] = true
+			slot_for_player[ids[k]] = next_idx
+			cluster_sum += slots[next_idx]
+			cluster_n += 1
+
+	# Materialise the per-player positions. Every player is placed because there
+	# are exactly `count` slots; the `pid` fallback is only a defensive net.
+	var positions: Array[Vector2] = []
+	positions.resize(count)
+	for pid in count:
+		positions[pid] = slots[int(slot_for_player.get(pid, pid))]
+	return positions
+
+
+static func _slots_centroid(slots: Array[Vector2]) -> Vector2:
+	if slots.is_empty():
+		return Vector2.ZERO
+	var sum := Vector2.ZERO
+	for s in slots:
+		sum += s
+	return sum / float(slots.size())
+
+
+## Index of the free slot farthest from `from` (first index wins ties), or -1.
+static func _farthest_free_slot(slots: Array[Vector2], taken: Array[bool], from: Vector2) -> int:
+	var best := -1
+	var best_d := -1.0
+	for i in slots.size():
+		if taken[i]:
+			continue
+		var d := slots[i].distance_squared_to(from)
+		if d > best_d:
+			best_d = d
+			best = i
+	return best
+
+
+## Index of the free slot nearest `to` (first index wins ties), or -1.
+static func _nearest_free_slot(slots: Array[Vector2], taken: Array[bool], to: Vector2) -> int:
+	var best := -1
+	var best_d := INF
+	for i in slots.size():
+		if taken[i]:
+			continue
+		var d := slots[i].distance_squared_to(to)
+		if d < best_d:
+			best_d = d
+			best = i
+	return best

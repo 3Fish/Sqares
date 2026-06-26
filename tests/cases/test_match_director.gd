@@ -43,6 +43,56 @@ func _test_resolve_spawn_positions() -> void:
 	assert_eq(MatchDirector.resolve_spawn_positions(0, two).size(), 0, "0 players -> 0 positions")
 
 
+func _test_resolve_team_spawn_positions() -> void:
+	# Two clear spatial clusters: a left pair and a right pair.
+	var quad: Array[Vector2] = [
+		Vector2(-400, -50), Vector2(400, -50), Vector2(-400, 50), Vector2(400, 50)]
+
+	# 2v2 (players 0,2 vs 1,3): each pair must land on the same side, and the two
+	# teams must end up on opposite sides.
+	var pos := MatchDirector.resolve_team_spawn_positions([0, 1, 0, 1], quad)
+	assert_eq(pos.size(), 4, "2v2 -> 4 positions")
+	assert_true(_all_unique(pos), "2v2 clustered positions are unique (no stacking)")
+	assert_true(_same_set(pos, quad), "2v2 clustering is a permutation of the spawn slots")
+	assert_almost_eq(pos[0].x, pos[2].x, "team 0 (players 0,2) share a side")
+	assert_almost_eq(pos[1].x, pos[3].x, "team 1 (players 1,3) share a side")
+	assert_true(absf(pos[0].x - pos[1].x) > 0.001, "opposing teams are on different sides")
+
+	# Deterministic: identical inputs yield identical placement (host/client agree).
+	var again := MatchDirector.resolve_team_spawn_positions([0, 1, 0, 1], quad)
+	assert_true(pos[0] == again[0] and pos[1] == again[1] \
+		and pos[2] == again[2] and pos[3] == again[3], "clustering is deterministic")
+
+	# FFA (every player on their own team): falls back to the plain spawn order,
+	# so non-team placement is byte-for-byte unchanged.
+	var ffa := MatchDirector.resolve_team_spawn_positions([0, 1, 2, 3], quad)
+	var plain := MatchDirector.resolve_spawn_positions(4, quad)
+	assert_true(ffa[0] == plain[0] and ffa[1] == plain[1] \
+		and ffa[2] == plain[2] and ffa[3] == plain[3], "FFA keeps the plain spawn order")
+
+	# 1v1: distinct teams == player count, so the plain order is preserved.
+	var two: Array[Vector2] = [Vector2(-400, 0), Vector2(400, 0)]
+	var duel := MatchDirector.resolve_team_spawn_positions([0, 1], two)
+	assert_true(duel[0] == two[0] and duel[1] == two[1], "1v1 placement unchanged")
+
+	# 2v1 on a line: the two teammates take adjacent spots; the lone enemy is set
+	# apart at the far end.
+	var line: Array[Vector2] = [Vector2(-400, 0), Vector2(0, 0), Vector2(400, 0)]
+	var trio := MatchDirector.resolve_team_spawn_positions([0, 1, 0], line)
+	assert_eq(trio.size(), 3, "2v1 -> 3 positions")
+	assert_true(_all_unique(trio), "2v1 clustered positions are unique")
+	assert_true(_same_set(trio, line), "2v1 clustering is a permutation of the spawn slots")
+	assert_true(_same_set([trio[0], trio[2]], [Vector2(-400, 0), Vector2(0, 0)]),
+		"2v1 teammates cluster on the adjacent left/centre spawns")
+	assert_true(trio[1] == Vector2(400, 0), "2v1 lone enemy is seeded apart at the far end")
+
+	# Degenerate inputs degrade gracefully.
+	assert_eq(MatchDirector.resolve_team_spawn_positions([], quad).size(), 0,
+		"no players -> no positions")
+	var solo := MatchDirector.resolve_team_spawn_positions([0], two)
+	assert_eq(solo.size(), 1, "single player -> single position")
+
+
 func _test_resolve_arena_id() -> void:
 	# A pending playtest arena (#36) overrides the configured fallback.
 	assert_eq(MatchDirector.resolve_arena_id("my_arena", "crossroads"), "my_arena",
@@ -59,6 +109,17 @@ func _all_unique(points: Array) -> bool:
 		for j in range(i + 1, points.size()):
 			if points[i] == points[j]:
 				return false
+	return true
+
+
+## True when `a` and `b` hold the same points regardless of order (the spawn
+## slots are unique, so a same-size mutual-containment check suffices).
+func _same_set(a: Array, b: Array) -> bool:
+	if a.size() != b.size():
+		return false
+	for p in a:
+		if not b.has(p):
+			return false
 	return true
 
 
