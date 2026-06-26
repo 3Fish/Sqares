@@ -37,6 +37,9 @@ const PUPPET_INTERP_DELAY := 0.1
 enum NetRole { LOCAL, PREDICTED, SIMULATED, PUPPET }
 
 var player_id: int = 0
+## Display name chosen for this player in match setup (#132). Local identity only;
+## surfaced by the team-win announcement (#134). Defaults empty until applied.
+var player_name: String = ""
 ## Action-map id this player samples ("p%d_*" with id + 1). Defaults to
 ## player_id; a networked client's own player overrides this to 0 so the
 ## machine's primary (p1) bindings drive it regardless of its slot.
@@ -98,6 +101,17 @@ func _ready() -> void:
 	var shape_node := get_node_or_null("CollisionShape2D") as CollisionShape2D
 	if shape_node and shape_node.shape is RectangleShape2D:
 		_body_half_extent = (shape_node.shape as RectangleShape2D).size * 0.5
+
+
+## Applies this player's match-setup identity (#132): records the chosen name and
+## tints the character's Visual to the chosen palette colour. Cosmetic and local —
+## the HUD keeps its own pip palette (maintainer A3). Safe to call after the node
+## is in the tree (MatchDirector calls it right after `add_child`).
+func apply_appearance(p_color: Color, p_name: String) -> void:
+	player_name = p_name
+	var visual := get_node_or_null("Visual") as Polygon2D
+	if visual:
+		visual.color = p_color
 
 
 func _physics_process(delta: float) -> void:

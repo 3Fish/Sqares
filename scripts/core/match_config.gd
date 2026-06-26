@@ -27,6 +27,10 @@ const DEFAULT_ARENA := "crossroads"
 ## for any missing key so older files keep loading.
 const CONFIG_VERSION := 1
 
+## Max length of a per-player name chosen in setup (#132). Blank names fall back
+## to the default "Player N"; longer entries are truncated.
+const MAX_NAME_LENGTH := 30
+
 ## Whether a setup screen has staged a configuration the next match should adopt.
 var pending: bool = false
 
@@ -36,17 +40,30 @@ var wins_needed: int = DEFAULT_WINS
 var arena_id: String = DEFAULT_ARENA
 var friendly_fire: bool = true
 
+## Per-player identity chosen in setup (#132), one entry per active player slot.
+## `player_names` are sanitised strings; `player_colors` are palette indices into
+## `PlayerPalette`. Local-only here — replicating a peer's chosen name/colour rides
+## the online lobby work (#66/#82). MatchDirector applies the colour to each
+## spawned player's character and records the name on it.
+var player_names: Array = []
+var player_colors: Array = []
+
 
 ## Stages a configuration for the next match and marks it pending. Numeric values
 ## are normalised to the supported ranges so the match always receives a sane,
 ## in-range selection regardless of what a caller passes.
 func configure(p_mode: String, p_player_count: int, p_wins: int, p_arena: String,
-		p_friendly_fire: bool = true) -> void:
+		p_friendly_fire: bool = true, p_names: Array = [], p_colors: Array = []) -> void:
 	game_mode = p_mode
 	player_count = MatchDirector.clamp_player_count(p_player_count)
 	wins_needed = clamp_wins(p_wins)
 	arena_id = p_arena
 	friendly_fire = p_friendly_fire
+	# Normalise per-player identity to exactly `player_count` sane entries (#132) so
+	# the match always reads a full, in-range name/colour list regardless of what
+	# the setup screen passed.
+	player_names = normalize_names(p_names, player_count)
+	player_colors = normalize_colors(p_colors, player_count)
 	pending = true
 
 
@@ -67,6 +84,8 @@ func reset() -> void:
 	wins_needed = DEFAULT_WINS
 	arena_id = DEFAULT_ARENA
 	friendly_fire = true
+	player_names = []
+	player_colors = []
 
 
 # ---------------------------------------------------------------------------
@@ -76,6 +95,58 @@ func reset() -> void:
 ## Clamps a requested round target into the supported range.
 static func clamp_wins(wins: int) -> int:
 	return clampi(wins, MIN_WINS, MAX_WINS)
+
+
+## The default display name for a player slot when none was chosen / a blank was
+## entered (the maintainer disallows empty names, #132 A4).
+static func default_player_name(player_id: int) -> String:
+	return "Player %d" % (player_id + 1)
+
+
+## Sanitises a chosen name (#132 A4): trims surrounding whitespace, falls back to
+## the default when blank, and truncates to `MAX_NAME_LENGTH`.
+static func sanitize_name(raw: String, player_id: int) -> String:
+	var trimmed := raw.strip_edges()
+	if trimmed.is_empty():
+		return default_player_name(player_id)
+	if trimmed.length() > MAX_NAME_LENGTH:
+		return trimmed.substr(0, MAX_NAME_LENGTH)
+	return trimmed
+
+
+## Builds exactly `count` sanitised names, filling missing slots with defaults.
+static func normalize_names(raw_names: Array, count: int) -> Array:
+	var out: Array = []
+	for i in count:
+		var raw := String(raw_names[i]) if i < raw_names.size() else ""
+		out.append(sanitize_name(raw, i))
+	return out
+
+
+## Builds exactly `count` valid palette indices, filling/repairing missing or
+## out-of-range slots with the per-player default colour.
+static func normalize_colors(raw_colors: Array, count: int) -> Array:
+	var out: Array = []
+	for i in count:
+		out.append(color_index_for(raw_colors, i))
+	return out
+
+
+## Resolves the name for a slot from a (possibly short/empty) names array, falling
+## back to the default. Used at spawn so an unconfigured match (editor playtest,
+## client, tests) still gets sane names.
+static func name_for(names: Array, player_id: int) -> String:
+	if player_id >= 0 and player_id < names.size():
+		return sanitize_name(String(names[player_id]), player_id)
+	return default_player_name(player_id)
+
+
+## Resolves the palette index for a slot from a (possibly short/empty) colours
+## array, clamping to a real colour and falling back to the per-player default.
+static func color_index_for(colors: Array, player_id: int) -> int:
+	if player_id >= 0 and player_id < colors.size():
+		return PlayerPalette.clamp_index(int(colors[player_id]))
+	return PlayerPalette.default_index(player_id)
 
 
 ## Picks a valid choice from `available`: the request if present, else `fallback`

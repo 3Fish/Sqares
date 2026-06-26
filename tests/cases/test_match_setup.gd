@@ -34,3 +34,16 @@ func _test_teams_is_not_grouped_at_two_players() -> void:
 func _test_null_and_non_mode_scripts_do_not_group() -> void:
 	assert_false(MatchSetup.mode_groups_players(null, 4), "null script -> no teams")
 	assert_false(MatchSetup.mode_groups_players(NonMode, 4), "non-GameMode script -> no teams")
+
+
+# ---------------------------------------------------------------------------
+# Per-player name + colour rows (#132)
+# ---------------------------------------------------------------------------
+
+func _test_active_player_count_maps_picker_index_to_count() -> void:
+	# Player picker item index 0 -> 2 players, 1 -> 3, 2 -> 4 (MIN_PLAYERS-based).
+	assert_eq(MatchSetup.active_player_count(0), MatchDirector.MIN_PLAYERS, "index 0 -> min players (2)")
+	assert_eq(MatchSetup.active_player_count(1), 3, "index 1 -> 3 players")
+	assert_eq(MatchSetup.active_player_count(2), MatchDirector.MAX_PLAYERS, "index 2 -> max players (4)")
+	# A -1 "nothing selected" guards to the minimum rather than going below it.
+	assert_eq(MatchSetup.active_player_count(-1), MatchDirector.MIN_PLAYERS, "no selection -> min players")
