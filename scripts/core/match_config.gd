@@ -144,6 +144,40 @@ static func color_index_for(colors: Array, player_id: int) -> int:
 	return PlayerPalette.default_index(player_id)
 
 
+# ---------------------------------------------------------------------------
+# Colour-derived teams (#134)
+# ---------------------------------------------------------------------------
+# In Teams mode the teams are *extrapolated from the per-player colours* chosen in
+# setup (#134 A3 / #132 A4): players who pick the same palette colour share a team,
+# so the host composes teams simply by assigning matching colours. The team id IS
+# the palette colour index, which lets the win announcement name a team by its
+# colour ("Team Babyblue wins!"). The distinct-team count naturally lands in
+# [1, player_count]; the maintainer's intended range is 2..N (#134 A2), reached by
+# assigning at least two distinct colours. FFA ignores this entirely — there the
+# same colour does not mean the same team (#134 A4).
+
+## Builds the `player_id -> team_id` assignment for a colour-derived Teams match
+## (#134). Each active slot resolves through `color_index_for`, the same per-slot
+## fallback the spawn path uses, so a short/empty colours array still yields a full
+## map. The team id is the palette colour index, so two players on the same colour
+## map to the same team. Pure so the derivation is unit-tested without a match.
+static func teams_from_colors(colors: Array, player_count: int) -> Dictionary:
+	var teams: Dictionary = {}
+	for i in player_count:
+		teams[i] = color_index_for(colors, i)
+	return teams
+
+
+## Number of distinct teams a colour-derived Teams match would produce: the count
+## of distinct palette indices among the active players (#134). Pure so the setup
+## preview can read it without booting a match.
+static func distinct_team_count(colors: Array, player_count: int) -> int:
+	var seen: Dictionary = {}
+	for i in player_count:
+		seen[color_index_for(colors, i)] = true
+	return seen.size()
+
+
 ## Picks a valid choice from `available`: the request if present, else `fallback`
 ## when it is available, else the first available option, else the fallback
 ## verbatim (so an empty registry still yields a sane id). Used to keep a staged

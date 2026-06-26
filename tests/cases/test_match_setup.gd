@@ -47,3 +47,34 @@ func _test_active_player_count_maps_picker_index_to_count() -> void:
 	assert_eq(MatchSetup.active_player_count(2), MatchDirector.MAX_PLAYERS, "index 2 -> max players (4)")
 	# A -1 "nothing selected" guards to the minimum rather than going below it.
 	assert_eq(MatchSetup.active_player_count(-1), MatchDirector.MIN_PLAYERS, "no selection -> min players")
+
+
+# ---------------------------------------------------------------------------
+# Teams-from-colours preview (#134)
+# ---------------------------------------------------------------------------
+
+func _test_teams_preview_groups_players_by_colour() -> void:
+	# P1+P3 on Sky (palette 0), P2+P4 on Orange (palette 1) -> two named groups, in
+	# palette order, each listing its players.
+	var text := MatchSetup.teams_preview_text([0, 1, 0, 1], 4)
+	assert_true(text.contains("2 team(s)"), "reports two teams: %s" % text)
+	assert_true(text.contains("%s (P1, P3)" % PlayerPalette.name_at(0)), "first colour group lists P1, P3: %s" % text)
+	assert_true(text.contains("%s (P2, P4)" % PlayerPalette.name_at(1)), "second colour group lists P2, P4: %s" % text)
+
+
+func _test_teams_preview_distinct_colours_report_solo_teams() -> void:
+	var text := MatchSetup.teams_preview_text([0, 1, 2], 3)
+	assert_true(text.contains("3 team(s)"), "three distinct colours -> three teams: %s" % text)
+
+
+func _test_teams_preview_all_same_colour_is_one_team() -> void:
+	var text := MatchSetup.teams_preview_text([4, 4], 2)
+	assert_true(text.contains("1 team(s)"), "one shared colour -> one team: %s" % text)
+	assert_true(text.contains("%s (P1, P2)" % PlayerPalette.name_at(4)), "both players in one group: %s" % text)
+
+
+func _test_teams_preview_resolves_short_array_per_slot() -> void:
+	# An empty colours array falls back to the per-slot default colours (distinct for
+	# the first four slots), matching the spawn-path resolution.
+	var text := MatchSetup.teams_preview_text([], 2)
+	assert_true(text.contains("2 team(s)"), "empty colours -> per-slot default (distinct) teams: %s" % text)
