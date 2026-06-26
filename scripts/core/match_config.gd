@@ -39,6 +39,10 @@ var player_count: int = MatchDirector.MIN_PLAYERS
 var wins_needed: int = DEFAULT_WINS
 var arena_id: String = DEFAULT_ARENA
 var friendly_fire: bool = true
+## Smaller-team card-draw handicap toggle (#147), a mode-specific option like
+## `friendly_fire`. Off by default (historical behaviour); persisted in saved
+## templates (#135).
+var team_handicap: bool = false
 
 ## Per-player identity chosen in setup (#132), one entry per active player slot.
 ## `player_names` are sanitised strings; `player_colors` are palette indices into
@@ -53,12 +57,14 @@ var player_colors: Array = []
 ## are normalised to the supported ranges so the match always receives a sane,
 ## in-range selection regardless of what a caller passes.
 func configure(p_mode: String, p_player_count: int, p_wins: int, p_arena: String,
-		p_friendly_fire: bool = true, p_names: Array = [], p_colors: Array = []) -> void:
+		p_friendly_fire: bool = true, p_names: Array = [], p_colors: Array = [],
+		p_team_handicap: bool = false) -> void:
 	game_mode = p_mode
 	player_count = MatchDirector.clamp_player_count(p_player_count)
 	wins_needed = clamp_wins(p_wins)
 	arena_id = p_arena
 	friendly_fire = p_friendly_fire
+	team_handicap = p_team_handicap
 	# Normalise per-player identity to exactly `player_count` sane entries (#132) so
 	# the match always reads a full, in-range name/colour list regardless of what
 	# the setup screen passed.
@@ -84,6 +90,7 @@ func reset() -> void:
 	wins_needed = DEFAULT_WINS
 	arena_id = DEFAULT_ARENA
 	friendly_fire = true
+	team_handicap = false
 	player_names = []
 	player_colors = []
 
@@ -210,13 +217,15 @@ static func resolve_choice(requested: String, available: Array, fallback: String
 
 ## Serialises the persisted match-template fields into a plain dictionary (#135).
 ## Wins are clamped on the way out so a saved file is always in-range.
-static func to_dict(p_mode: String, p_wins: int, p_arena: String, p_friendly_fire: bool) -> Dictionary:
+static func to_dict(p_mode: String, p_wins: int, p_arena: String, p_friendly_fire: bool,
+		p_team_handicap: bool = false) -> Dictionary:
 	return {
 		"version": CONFIG_VERSION,
 		"game_mode": p_mode,
 		"wins_needed": clamp_wins(p_wins),
 		"arena_id": p_arena,
 		"friendly_fire": p_friendly_fire,
+		"team_handicap": p_team_handicap,
 	}
 
 
@@ -233,6 +242,7 @@ static func normalize_dict(data: Dictionary, available_modes: Array, available_a
 		"wins_needed": clamp_wins(int(data.get("wins_needed", DEFAULT_WINS))),
 		"arena_id": resolve_choice(String(data.get("arena_id", DEFAULT_ARENA)), available_arenas, DEFAULT_ARENA),
 		"friendly_fire": bool(data.get("friendly_fire", true)),
+		"team_handicap": bool(data.get("team_handicap", false)),
 	}
 
 
