@@ -155,6 +155,12 @@ func _spawn_players() -> void:
 		# (p1) bindings, whatever its slot; everything else keeps slot bindings.
 		p.input_id = 0 if networked and i == local_slot else i
 		_players_container.add_child(p)
+		# Apply the per-player name + colour chosen in setup (#132). Falls back to
+		# the palette defaults when nothing was staged (editor playtest, a client,
+		# or a direct match load), so every spawn gets a sane, distinct appearance.
+		p.apply_appearance(
+			PlayerPalette.color_at(MatchConfig.color_index_for(MatchConfig.player_colors, i)),
+			MatchConfig.name_for(MatchConfig.player_names, i))
 		_players.append(p)
 		_alive_ids.append(i)
 		p.global_position = positions[i]
