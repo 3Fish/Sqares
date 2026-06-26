@@ -199,8 +199,14 @@ func try_fire(direction: Vector2, net_id: String = "") -> FireResult:
 ## only and the host-side effect/broadcast steps in `_spawn_projectile` are
 ## skipped — it is the shooter's default single-bullet shot, matching the spec the
 ## client predicts with locally (effects are authority-side, #82).
-func spawn_predicted(direction: Vector2, net_id: String) -> Projectile:
-	return _spawn_projectile(_build_shot_spec(), direction, net_id)
+##
+## `silent` defaults true (#140): a pure client doesn't know a shot will be delayed
+## at trigger time, so it already played `SHOOT` on its premature instant
+## prediction. Re-playing the cue here — at the re-timed spawn — would sound the
+## shot twice for an online `delay > 0` shot, so the re-spawn is silent and the one
+## cue stays at the trigger pull.
+func spawn_predicted(direction: Vector2, net_id: String, silent: bool = true) -> Projectile:
+	return _spawn_projectile(_build_shot_spec(), direction, net_id, silent)
 
 
 ## Spawns every bullet of a (final, firing) spec in `direction` and returns the
@@ -257,7 +263,10 @@ func _build_shot_spec() -> ShotSpec:
 	)
 
 
-func _spawn_projectile(spec: ShotSpec, direction: Vector2, net_id: String) -> Projectile:
+## `silent` suppresses the `SHOOT` cue for a re-timed delayed-shot re-spawn (#140);
+## every normal/immediate shot leaves it false so the cue plays as the bullet
+## appears.
+func _spawn_projectile(spec: ShotSpec, direction: Vector2, net_id: String, silent: bool = false) -> Projectile:
 	var proj: Projectile = _projectile_scene.instantiate()
 	proj.setup(
 		direction, spec.speed, spec.damage, spec.scale, spec.bounces, spec.lifesteal,
@@ -270,7 +279,8 @@ func _spawn_projectile(spec: ShotSpec, direction: Vector2, net_id: String) -> Pr
 	proj.visual_only = NetworkManager.is_client()
 	proj.global_position = global_position + direction.normalized() * 48.0
 	get_tree().current_scene.add_child(proj)
-	SfxDirector.play(SfxDirector.SHOOT)
+	if not silent:
+		SfxDirector.play(SfxDirector.SHOOT)
 	if not proj.visual_only:
 		# Let card effects react to / mutate the freshly spawned shot. Effects
 		# run where damage is adjudicated, so visual-only instances skip this.

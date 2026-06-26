@@ -429,8 +429,13 @@ func _on_damaged(amount: float, attacker: Node) -> void:
 func _on_died(killer: Node) -> void:
 	_dead = true
 	velocity = Vector2.ZERO
-	# A pending delayed shot doesn't fire from a corpse (#113).
+	# A pending delayed shot doesn't fire from a corpse (#113), and on a client a
+	# re-timed prediction of a host-delayed shot is dropped too (#140) so a death
+	# mid-delay (trigger still held, before the round resets) leaves no orphan
+	# visual bullet the host will never broadcast — mirroring the host abandoning
+	# its scheduled shot here. `clear_client_pending` is a no-op off a client.
 	weapon.clear_pending()
+	NetReplicator.clear_client_pending()
 	set_physics_process(false)
 	# Dead players stop being homing/knockback targets until they respawn.
 	remove_from_group(Projectile.TARGET_GROUP)
