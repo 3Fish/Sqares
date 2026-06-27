@@ -31,6 +31,7 @@ var _arena_picker: OptionButton
 var _mode_options_button: Button
 var _mode_options_popup: PopupPanel
 var _friendly_fire_toggle: CheckButton
+var _team_handicap_toggle: CheckButton
 # Read-only preview of how the chosen colours group into teams (#134). Visible only
 # for team-grouping modes (Teams); colours don't form teams in FFA (#134 A4).
 var _teams_preview: Label
@@ -50,6 +51,7 @@ var _pending_save_name: String = ""
 
 # Staged mode-specific options (written into MatchConfig on start).
 var _friendly_fire: bool = true
+var _team_handicap: bool = false
 
 # Per-player name + colour rows (#132), one per potential local player slot. Only
 # the rows for the currently-selected player count are visible; all are read on
@@ -142,7 +144,7 @@ func _on_start_pressed() -> void:
 	for i in players:
 		names.append(_name_edits[i].text)
 		colors.append(_color_pickers[i].selected)
-	MatchConfig.configure(_current_mode_id(), players, rounds, _current_arena_id(), _friendly_fire, names, colors)
+	MatchConfig.configure(_current_mode_id(), players, rounds, _current_arena_id(), _friendly_fire, names, colors, _team_handicap)
 	get_tree().change_scene_to_file(MATCH_SCENE)
 
 
@@ -250,7 +252,7 @@ func _on_overwrite_confirmed() -> void:
 ## entry.
 func _do_save_config(name: String) -> void:
 	var data := MatchConfig.to_dict(
-		_current_mode_id(), int(_rounds_picker.value), _current_arena_id(), _friendly_fire)
+		_current_mode_id(), int(_rounds_picker.value), _current_arena_id(), _friendly_fire, _team_handicap)
 	if MatchConfigStore.save(name, data) != OK:
 		return
 	_refresh_config_list()
@@ -278,6 +280,7 @@ func _apply_config(norm: Dictionary) -> void:
 	_arena_picker.select(maxi(0, _arena_ids.find(String(norm["arena_id"]))))
 	_rounds_picker.value = int(norm["wins_needed"])
 	_friendly_fire = bool(norm["friendly_fire"])
+	_team_handicap = bool(norm["team_handicap"])
 	# A loaded mode may differ from the previous one; re-evaluate the submenu.
 	_refresh_mode_options_availability()
 
@@ -420,13 +423,18 @@ static func teams_preview_text(colors: Array, player_count: int) -> String:
 # ---------------------------------------------------------------------------
 
 func _on_mode_options_pressed() -> void:
-	# Reflect the staged value into the toggle before showing the submenu.
+	# Reflect the staged values into the toggles before showing the submenu.
 	_friendly_fire_toggle.button_pressed = _friendly_fire
+	_team_handicap_toggle.button_pressed = _team_handicap
 	_mode_options_popup.popup_centered()
 
 
 func _on_friendly_fire_toggled(pressed: bool) -> void:
 	_friendly_fire = pressed
+
+
+func _on_team_handicap_toggled(pressed: bool) -> void:
+	_team_handicap = pressed
 
 
 func _on_mode_selected(_index: int) -> void:
@@ -476,6 +484,17 @@ func _build_mode_options_popup() -> PopupPanel:
 	hint.text = "When on, team-mates can damage each other."
 	hint.add_theme_font_size_override("font_size", 12)
 	box.add_child(hint)
+
+	_team_handicap_toggle = CheckButton.new()
+	_team_handicap_toggle.text = "Smaller-team handicap"
+	_team_handicap_toggle.button_pressed = _team_handicap
+	_team_handicap_toggle.toggled.connect(_on_team_handicap_toggled)
+	box.add_child(_team_handicap_toggle)
+
+	var handicap_hint := Label.new()
+	handicap_hint.text = "When on, a losing team draws extra cards for each\nplayer the winning team has more than it."
+	handicap_hint.add_theme_font_size_override("font_size", 12)
+	box.add_child(handicap_hint)
 
 	var done := Button.new()
 	done.text = "Done"

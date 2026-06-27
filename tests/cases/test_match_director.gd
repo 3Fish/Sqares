@@ -124,6 +124,102 @@ func _same_set(a: Array, b: Array) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Smaller-team card-draw handicap (#147) — resolve_draw_counts
+# ---------------------------------------------------------------------------
+
+func _rng(seed: int) -> RandomNumberGenerator:
+	var r := RandomNumberGenerator.new()
+	r.seed = seed
+	return r
+
+
+func _test_draw_counts_losers_are_team_based() -> void:
+	# A2: a player draws iff its *team* lost — a member of the winning team draws
+	# nothing even though it may have been killed. Here team 0 (players 0,2) wins;
+	# only the losing team 1 (players 1,3) draws, and only the base count off-handicap.
+	var team_of := {0: 0, 1: 1, 2: 0, 3: 1}
+	var counts := MatchDirector.resolve_draw_counts(team_of, 0, 2, false, _rng(1))
+	assert_eq(counts.size(), 2, "only the losing team's two players draw")
+	assert_false(counts.has(0), "winning-team player 0 draws nothing")
+	assert_false(counts.has(2), "winning-team player 2 (even if killed) draws nothing")
+	assert_eq(int(counts[1]), 2, "loser draws the base count")
+	assert_eq(int(counts[3]), 2, "loser draws the base count")
+
+
+func _test_draw_counts_ffa_is_base_for_every_loser() -> void:
+	# FFA: each player is their own one-person team, so no team trails the winner —
+	# every loser draws exactly the base count, handicap on or off (A3).
+	var ffa := {0: 0, 1: 1, 2: 2, 3: 3}
+	var off := MatchDirector.resolve_draw_counts(ffa, 0, 3, false, _rng(2))
+	var on := MatchDirector.resolve_draw_counts(ffa, 0, 3, true, _rng(2))
+	assert_eq(off, {1: 3, 2: 3, 3: 3}, "FFA handicap-off: base for every loser, winner absent")
+	assert_eq(on, {1: 3, 2: 3, 3: 3}, "FFA handicap-on changes nothing (every team size 1)")
+
+
+func _test_draw_counts_equal_teams_get_no_extra() -> void:
+	# 2v2 with the handicap on: the losing team is the same size as the winner, so
+	# max(0, win - own) == 0 and only the base count is drawn.
+	var counts := MatchDirector.resolve_draw_counts({0: 0, 1: 1, 2: 0, 3: 1}, 0, 2, true, _rng(3))
+	assert_eq(counts, {1: 2, 3: 2}, "equal-size losing team draws only the base")
+
+
+func _test_draw_counts_solo_team_gets_full_deficit() -> void:
+	# 1v2: the lone loser (team 0) trails the 2-player winner by one, so it draws
+	# base + 1. The whole deficit lands on the single member (per = 1, no remainder).
+	var counts := MatchDirector.resolve_draw_counts({0: 0, 1: 1, 2: 1}, 1, 2, true, _rng(4))
+	assert_eq(counts, {0: 3}, "solo losing team draws base + (winner - 1)")
+
+
+func _test_draw_counts_remainder_is_split_across_team() -> void:
+	# 2v3 with the handicap on: deficit is 1 extra draw across a 2-player losing
+	# team, so exactly one (random) member gets +1 and the other gets the base only.
+	var counts := MatchDirector.resolve_draw_counts(
+		{0: 0, 1: 0, 2: 1, 3: 1, 4: 1}, 1, 2, true, _rng(7))
+	assert_eq(counts.size(), 2, "only the 2-player losing team draws")
+	assert_false(counts.has(2), "winning-team members draw nothing")
+	var total: int = int(counts[0]) + int(counts[1])
+	assert_eq(total, 5, "base*2 + 1 extra distributed across the team")
+	var bumped := 1 if int(counts[0]) == 3 else 0
+	bumped += 1 if int(counts[1]) == 3 else 0
+	assert_eq(bumped, 1, "exactly one member gets the single extra draw")
+	assert_true(int(counts[0]) >= 2 and int(counts[1]) >= 2, "no member drops below the base")
+
+
+func _test_draw_counts_multi_team_measures_each_loser_vs_winner() -> void:
+	# A1's worked example: team A=1 player, team B=2, team C=3; team C wins. Each
+	# losing team's extra is measured against the winner: A trails by 2, B by 1.
+	var team_of := {0: 10, 1: 20, 2: 20, 3: 30, 4: 30, 5: 30}
+	var counts := MatchDirector.resolve_draw_counts(team_of, 30, 2, true, _rng(11))
+	assert_eq(counts.size(), 3, "all three losing players draw; the winners do not")
+	assert_false(counts.has(3) or counts.has(4) or counts.has(5), "winning team draws nothing")
+	assert_eq(int(counts[0]), 4, "solo team A trails the 3-player winner by 2 -> base + 2")
+	var team_b: int = int(counts[1]) + int(counts[2])
+	assert_eq(team_b, 5, "team B (2 players) shares 1 extra: base*2 + 1")
+
+
+func _test_draw_counts_never_negative_when_loser_is_larger() -> void:
+	# A losing team larger than the winner gets no extra (max(0, ...)), never fewer
+	# than the base.
+	var counts := MatchDirector.resolve_draw_counts({0: 0, 1: 1, 2: 1, 3: 1}, 0, 2, true, _rng(5))
+	assert_eq(counts, {1: 2, 2: 2, 3: 2}, "bigger losing team still draws only the base")
+
+
+func _test_draw_counts_draw_round_has_no_handicap() -> void:
+	# A mutual-elimination draw (winning_team == -1) has no reference team, so every
+	# player draws the base regardless of the handicap toggle.
+	var counts := MatchDirector.resolve_draw_counts({0: 0, 1: 1}, -1, 2, true, _rng(6))
+	assert_eq(counts, {0: 2, 1: 2}, "a draw yields the base for everyone")
+
+
+func _test_draw_counts_is_deterministic_for_a_seed() -> void:
+	# Same seed + inputs -> identical split, the property host/offline play relies on.
+	var team_of := {0: 0, 1: 0, 2: 1, 3: 1, 4: 1}
+	var a := MatchDirector.resolve_draw_counts(team_of, 1, 2, true, _rng(99))
+	var b := MatchDirector.resolve_draw_counts(team_of, 1, 2, true, _rng(99))
+	assert_eq(a, b, "identical seed yields identical handicap split")
+
+
+# ---------------------------------------------------------------------------
 # Colour-derived team assignment + announcement glue (#134)
 # ---------------------------------------------------------------------------
 # `_team_assignment` and `_team_label` are thin instance glue that read the staged

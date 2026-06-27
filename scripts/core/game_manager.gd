@@ -21,6 +21,12 @@ var team_of: Dictionary[int, int] = {}
 ## point friendly shots deal no damage and are consumed (#62). The hit
 ## adjudication reads this; the per-shot rule lives in `Projectile.is_hostile`.
 var friendly_fire: bool = true
+## Whether the toggleable card-draw handicap for smaller teams is active (#147).
+## Off by default (the historical behaviour, and moot in Free-for-all). When on,
+## a losing team draws extra cards equal to how many more players the winning team
+## has — see `MatchDirector.resolve_draw_counts`, which reads this via the match
+## director. A Teams match sets it through `setup_match` / `MatchDirector.team_handicap`.
+var team_handicap: bool = false
 
 signal state_changed(new_state: State)
 signal round_started(round_num: int)
@@ -32,14 +38,16 @@ signal match_ended(winner_team_id: int)
 ## the match is Free-for-all (each player is their own team). Win counts are
 ## tracked per distinct team, so FFA naturally tracks per player. `p_friendly_fire`
 ## sets the per-match friendly-fire rule (#62); it defaults to on, so callers that
-## don't care keep the historical behaviour.
+## don't care keep the historical behaviour. `p_team_handicap` sets the smaller-team
+## card-draw handicap (#147); it defaults off, the historical behaviour.
 func setup_match(arena_id: String, player_count: int, wins_needed: int = 5,
 		team_assignment: Dictionary = {}, mode: StringName = &"ffa",
-		p_friendly_fire: bool = true) -> void:
+		p_friendly_fire: bool = true, p_team_handicap: bool = false) -> void:
 	current_arena_id = arena_id
 	rounds_to_win = wins_needed
 	mode_id = mode
 	friendly_fire = p_friendly_fire
+	team_handicap = p_team_handicap
 	round_number = 0
 	win_counts.clear()
 	team_of.clear()

@@ -129,6 +129,32 @@ func _test_to_dict_round_trips_through_normalize() -> void:
 	assert_false(norm["friendly_fire"], "friendly fire survives round trip")
 
 
+func _test_team_handicap_serialises_and_round_trips() -> void:
+	# The handicap toggle (#147) persists in a saved template like friendly fire.
+	var modes := ["ffa", "teams"]
+	var arenas := ["crossroads", "highrise"]
+	var d := MatchConfig.to_dict("teams", 4, "highrise", true, true)
+	assert_true(d["team_handicap"], "handicap serialised on the way out")
+	var norm := MatchConfig.normalize_dict(d, modes, arenas)
+	assert_true(norm["team_handicap"], "handicap survives the round trip")
+	# Defaults off for an older/hand-edited file that omits the key, and a 4-arg
+	# to_dict (no handicap arg) defaults the flag off — backwards compatible.
+	assert_false(MatchConfig.normalize_dict({}, modes, arenas)["team_handicap"],
+		"missing handicap key -> off")
+	assert_false(MatchConfig.to_dict("teams", 4, "highrise", true)["team_handicap"],
+		"legacy 4-arg to_dict defaults the handicap off")
+
+
+func _test_configure_stages_team_handicap() -> void:
+	# configure() threads the handicap through to the staged config (default off).
+	MatchConfig.configure("teams", 4, 5, "crossroads", true, [], [], true)
+	assert_true(MatchConfig.team_handicap, "configure stages the handicap on")
+	MatchConfig.configure("teams", 4, 5, "crossroads")
+	assert_false(MatchConfig.team_handicap, "configure defaults the handicap off")
+	MatchConfig.reset()
+	assert_false(MatchConfig.team_handicap, "reset clears the handicap")
+
+
 func _test_default_config_name_picks_lowest_free_slot() -> void:
 	assert_eq(MatchConfig.default_config_name([]), "Config 1", "first default is Config 1")
 	assert_eq(MatchConfig.default_config_name(["Config 1", "Config 2"]), "Config 3", "skips taken slots")

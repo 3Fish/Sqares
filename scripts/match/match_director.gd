@@ -37,6 +37,13 @@ static var pending_arena_id: String = ""
 ## consume harmlessly instead of dealing damage. Exposed here as an export until
 ## the deferred match-setup screen surfaces it, mirroring `game_mode`.
 @export var friendly_fire: bool = true
+## Toggleable card-draw handicap for smaller teams (#147). Off by default (the
+## historical behaviour, and moot in Free-for-all). When on in a Teams match, a
+## losing team draws extra cards equal to how many more players the winning team
+## has — split evenly across its members, with any remainder handed to randomly
+## chosen members each round. Exposed here as an export until the match-setup
+## screen surfaces it, mirroring `friendly_fire`.
+@export var team_handicap: bool = false
 
 @onready var _arena_container: Node2D  = $"../ArenaContainer"
 @onready var _players_container: Node2D = $"../PlayersContainer"
@@ -74,6 +81,7 @@ func _ready() -> void:
 		wins_needed = MatchConfig.wins_needed
 		arena_id = MatchConfig.arena_id
 		friendly_fire = MatchConfig.friendly_fire
+		team_handicap = MatchConfig.team_handicap
 	# Consume a one-shot playtest arena, if the editor handed one over (#36). The
 	# editor loads match.tscn directly (no setup config), and even if both were
 	# set this keeps the playtest arena's precedence.
@@ -96,7 +104,7 @@ func _ready() -> void:
 ## Builds the team assignment from the active mode and hands it to GameManager.
 func _begin_match() -> void:
 	var teams := _team_assignment()
-	GameManager.setup_match(arena_id, player_count, wins_needed, teams, _mode.id, friendly_fire)
+	GameManager.setup_match(arena_id, player_count, wins_needed, teams, _mode.id, friendly_fire, team_handicap)
 	if NetworkManager.is_host():
 		# Agree the match RNG up front so synced draws/rolls (#24) derive the
 		# same streams on every peer — the seed transport #64/#66 parked here.
@@ -254,18 +262,27 @@ func _end_round() -> void:
 	await get_tree().create_timer(2.5).timeout
 	if _match_over:
 		return
-	await _run_card_selection(loser_ids)
+	await _run_card_selection(winning_team)
 	if _match_over:
 		return
 	_start_round()
 
 
-## Between-rounds phase: each losing player is offered `cards_per_draw` cards
-## and picks one (#17). Returns immediately (no UI) when there is nothing to
-## pick — no losers, or no cards registered — so the round flow never stalls.
-func _run_card_selection(loser_ids: Array) -> void:
+## Between-rounds phase: each losing player is offered cards and picks one (#17).
+## Who draws and how many is `resolve_draw_counts` (#147): a player draws iff its
+## team lost (so a killed player on the *winning* team draws nothing), and with
+## the team handicap on a smaller losing team draws extra cards. Returns
+## immediately (no UI) when there is nothing to pick — no losers, or no cards
+## registered — so the round flow never stalls.
+func _run_card_selection(winning_team: int) -> void:
 	var cards: Array = CardRegistry.get_all_cards()
-	if loser_ids.is_empty() or cards.is_empty():
+	if cards.is_empty():
+		return
+	# Per-player hand sizes for this round's losers (the handicap split consumes
+	# the synced per-round RNG before the draws so host and offline agree, #24).
+	var counts: Dictionary = resolve_draw_counts(
+		GameManager.team_of, winning_team, cards_per_draw, team_handicap, RNGService.generator())
+	if counts.is_empty():
 		return
 	GameManager.begin_card_selection()
 	_hud.hide_center()
@@ -275,11 +292,11 @@ func _run_card_selection(loser_ids: Array) -> void:
 	# these hands rather than having clients re-draw, which keeps picks robust
 	# against any per-peer RNG-stream divergence (#82).
 	var hands: Dictionary = {}
-	for pid in loser_ids:
-		hands[pid] = CardDraw.weighted_draw(cards, cards_per_draw, RNGService.generator())
+	for pid in counts:
+		hands[pid] = CardDraw.weighted_draw(cards, int(counts[pid]), RNGService.generator())
 
 	if NetworkManager.is_networked():
-		await _run_networked_card_selection(loser_ids, hands)
+		await _run_networked_card_selection(counts.keys(), hands)
 		return
 
 	var ui := CardSelectionUI.new()
@@ -673,3 +690,73 @@ static func _nearest_free_slot(slots: Array[Vector2], taken: Array[bool], to: Ve
 			best_d = d
 			best = i
 	return best
+
+
+## Per-player card-draw counts for a round's losers (#147). `team_of` is the full
+## player_id -> team_id map; `winning_team` is the team that won the round (or -1
+## for a draw — mutual elimination). A player draws iff its team is *not* the
+## winning team, so a killed player on the winning team still counts as a winner
+## and draws nothing (maintainer A2). Every drawing loser gets `base` cards; when
+## `handicap` is on, each losing team additionally splits
+## `max(0, winning_team_size - own_team_size)` extra draws across its members —
+## an even whole-number share each, plus any remainder handed to that many of its
+## members chosen at random this round via `rng` (maintainer A1 + the #147 spec).
+## Team sizes are full rosters (A1's worked example counts whole teams). Returns a
+## player_id -> total draw count map covering exactly the drawing losers; FFA (or
+## a draw) yields `base` for every loser, since no team trails the winner. Pure
+## (RNG injected) so the split is unit-tested deterministically.
+static func resolve_draw_counts(team_of: Dictionary, winning_team: int, base: int,
+		handicap: bool, rng: RandomNumberGenerator) -> Dictionary:
+	# Full roster size per team, and the losing teams' members in id order.
+	var team_size: Dictionary = {}
+	for pid: int in team_of:
+		var t: int = int(team_of[pid])
+		team_size[t] = int(team_size.get(t, 0)) + 1
+	var losing_members: Dictionary = {}  # team_id -> Array[player_id], id-sorted
+	for pid: int in team_of:
+		var t: int = int(team_of[pid])
+		if t == winning_team:
+			continue
+		if not losing_members.has(t):
+			losing_members[t] = []
+		(losing_members[t] as Array).append(pid)
+
+	var win_size: int = int(team_size.get(winning_team, 0))
+	var counts: Dictionary = {}
+	# Iterate teams in ascending id so the random draw order is deterministic.
+	var teams: Array = losing_members.keys()
+	teams.sort()
+	for t: int in teams:
+		var members: Array = losing_members[t]
+		members.sort()
+		for pid: int in members:
+			counts[pid] = base
+		if not handicap:
+			continue
+		var extra: int = maxi(0, win_size - members.size())
+		if extra <= 0:
+			continue
+		# Even whole-number share to everyone, the remainder to random members.
+		var per: int = extra / members.size()
+		var remainder: int = extra % members.size()
+		for pid: int in members:
+			counts[pid] = int(counts[pid]) + per
+		for pid: int in _pick_random_members(members, remainder, rng):
+			counts[pid] = int(counts[pid]) + 1
+	return counts
+
+
+## Returns `n` distinct player ids drawn at random (without replacement) from
+## `members`, using `rng` so the choice is deterministic for a given seed (#24).
+## A partial Fisher–Yates shuffle: cheap, unbiased, and stops after `n` picks.
+static func _pick_random_members(members: Array, n: int, rng: RandomNumberGenerator) -> Array:
+	var pool: Array = members.duplicate()
+	var picked: Array = []
+	var take: int = clampi(n, 0, pool.size())
+	for i in take:
+		var j: int = rng.randi_range(i, pool.size() - 1)
+		var tmp = pool[i]
+		pool[i] = pool[j]
+		pool[j] = tmp
+		picked.append(pool[i])
+	return picked
