@@ -532,6 +532,31 @@ func _client_receive_roster(roster: Dictionary) -> void:
 	NetworkManager.adopt_roster(roster)
 
 
+# ---------------------------------------------------------------------------
+# Mid-match slot reclaim (#151): a reconnecting client presents the reconnect
+# token it cached from the roster mirror; the host rebinds it to its held slot.
+# ---------------------------------------------------------------------------
+
+## Client → host: ask to reclaim the slot held for this peer, identifying it by
+## the cached reconnect token. Called once the client has reconnected to the host.
+func request_slot_reclaim() -> void:
+	if not NetworkManager.is_client() or NetworkManager.local_reconnect_token == "":
+		return
+	_host_reclaim_slot.rpc_id(NetworkManager.HOST_PEER_ID, NetworkManager.local_reconnect_token)
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func _host_reclaim_slot(token: String) -> void:
+	if not NetworkManager.is_host():
+		return
+	# The token is the credential: it only matches a slot held for a peer that
+	# genuinely dropped, so the sender reclaims exactly that slot (or, if the
+	# token is unknown/already reclaimed, is registered fresh). The roster mirror
+	# then propagates the restored slot back to every peer.
+	NetworkManager.register_peer(multiplayer.get_remote_sender_id(), String(token))
+	broadcast_roster()
+
+
 ## Broadcasts the match RNG seed so every peer's RNGService derives identical
 ## streams — the host→client seed transport #64/#66 parked on this issue.
 func broadcast_seed(match_seed: int) -> void:

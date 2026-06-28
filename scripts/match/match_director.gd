@@ -109,6 +109,12 @@ func _begin_match() -> void:
 		# Agree the match RNG up front so synced draws/rolls (#24) derive the
 		# same streams on every peer — the seed transport #64/#66 parked here.
 		NetReplicator.broadcast_seed(RNGService.seed_match())
+		# Arm mid-match reconnect handling (#151): a peer dropping now holds its
+		# slot for a grace window instead of leaving the lobby, and a lapsed grace
+		# counts that slot's player dead for the round.
+		NetworkManager.set_match_in_progress(true)
+		if not NetworkManager.slot_hold_expired.is_connected(_on_slot_hold_expired):
+			NetworkManager.slot_hold_expired.connect(_on_slot_hold_expired)
 
 
 ## The `player_id -> team_id` map for this match. In local Teams play with colours
@@ -229,6 +235,21 @@ func _on_player_died(_player: Player, _killer: Node, player_id: int) -> void:
 		_end_round()
 
 
+## A dropped peer's reconnect grace lapsed (#151): count its slot's player dead
+## for the current round. Killing the live player node routes through the normal
+## death path (`_on_player_died` → round-end check), so a timeout resolves exactly
+## like an in-game elimination. The slot itself stays reserved (host-side) so the
+## peer can still rejoin from the next round.
+func _on_slot_hold_expired(slot: int) -> void:
+	if NetworkManager.is_client():
+		return
+	if slot < 0 or slot >= _players.size():
+		return
+	var p := _players[slot]
+	if p and is_instance_valid(p) and not p.health.is_dead():
+		p.health.kill()
+
+
 func _end_round() -> void:
 	_round_ending = true
 	var loser_ids: Array = []
@@ -251,6 +272,9 @@ func _end_round() -> void:
 
 	if match_over:
 		_match_over = true
+		# The match is over: stop holding slots for dropped peers (#151).
+		if NetworkManager.is_host():
+			NetworkManager.set_match_in_progress(false)
 		_broadcast("match_end", {"winner_id": winner_id})
 		_hud.show_center(
 			"%s wins the match!\n[any key to replay]" % _team_label(winning_team)
