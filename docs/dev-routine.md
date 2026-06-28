@@ -302,6 +302,13 @@ Identify the test framework and test runner used in this project (check README, 
 Push the branch and open a regular (non-draft) PR with:
 - Title: `[Auto] #{number}: {issue title}`
 - Body containing:
+  - A closing keyword on its own line so GitHub auto-closes the issue when the
+    PR merges: `Closes #{number}` (add one `Closes #N` line per issue this PR
+    fully resolves). This MUST appear in the PR **body** — the `#{number}` in
+    the title does not trigger auto-close, so without this line the issue stays
+    open after merge and has to be closed by hand. Use `Closes` for the issue
+    the PR implements; never point a closing keyword at an issue the PR only
+    partially addresses (that belongs in a `Deferred` follow-up instead).
   - One-paragraph summary of what was changed and why
   - Issue selection rationale (copied from the issue comment)
   - The ambiguity-check verdict and which potential questions were checked and why they were considered resolved
