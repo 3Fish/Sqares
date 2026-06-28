@@ -71,9 +71,10 @@ state from its labels and the comment thread:
   `status: needs-refinement`). **Stop here** — the maintainer takes it from here.
 
 ### D. `greenlit`
-- This is the maintainer's go-ahead. Implementation is a **separate concern** from
-  refinement; only act on it if the routine's own instructions tell it to start
-  implementation work. Otherwise leave greenlit issues alone.
+- This is the maintainer's go-ahead. A `greenlit` suggestion becomes eligible for
+  normal implementation in the developer routine's Phase C (see
+  `dev-routine.md`), treated like any other unblocked issue. Refinement (this
+  playbook) does nothing further with it.
 
 ## Hard rules
 
