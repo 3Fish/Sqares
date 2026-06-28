@@ -1,5 +1,7 @@
-blank_issues_enabled: true
-contact_links:
-  - name: Bug report
-    url: https://github.com/3Fish/Sqares/issues/new
-    about: Found something broken? Open a blank issue and describe the bug.
+# Hides the "Open a blank issue" option from non-maintainers, funnelling outside
+# contributors into the feature-suggestion form. Note: this is a soft funnel, not
+# a hard gate — maintainers still see a "blank (maintainers only)" option, and
+# anyone can bypass it via the /issues/new URL. The real protection against the
+# routine acting on unsolicited issues lives in docs/dev-routine.md (Phase C only
+# implements maintainer-authored or `greenlit` issues).
+blank_issues_enabled: false
