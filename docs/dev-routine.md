@@ -135,6 +135,10 @@ action that applies:
    - Confirm the PR is mergeable (no conflicts, branch up to date with base);
      if it is behind or conflicting, update/rebase it, let CI re-run, and merge
      on the next run rather than forcing through a red or stale state.
+   - `main` is protected with **require linear history**, so merge with **squash
+     or rebase** — never a merge commit (GitHub will reject one). The protection
+     also blocks force-pushes to and deletion of `main`; this never affects the
+     routine, which only force-pushes feature branches and never `main`.
    - Merge, then delete the source branch if the repo convention is to do so.
 
 Notes for Phase A:
