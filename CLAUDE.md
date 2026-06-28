@@ -6,6 +6,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Sqares** — a 2D rogue-like arena battle shooter (Godot 4.6, GL Compatibility renderer). Players battle in arenas (FFA or teams); after each round losing players pick modifier cards. Free, open-source, and built mod-first: nearly all gameplay content (stats, cards, arenas, game modes, sounds) is registered at runtime through the mod system rather than hard-coded.
 
+## Automation
+
+This repo is maintained by a recurring autonomous routine. Its full operating
+manual lives in the repo so it can be reviewed and changed through commits:
+
+- `docs/dev-routine.md` — what the routine does each run (PR maintenance,
+  suggestion refinement, issue implementation). The platform-side routine is just
+  a thin pointer to this file.
+- `docs/suggestion-workflow.md` — how community feature suggestions (filed via the
+  issue form) are refined into greenlit work.
+
 ## Commands
 
 The Godot binary on this machine is `godot` (Godot 4.6).
@@ -26,7 +37,7 @@ godot --headless --verbose --import
 
 There is no single-test flag. The runner discovers every `_test_*` method in every script under `tests/cases/`. To run a subset, temporarily move other case files out of `tests/cases/`, or invoke a case script's methods from a scratch script.
 
-CI (`.github/workflows/export.yml`) only validates that the project **exports** for linux/windows/macos via `barichello/godot-ci:4.6`. It does **not** run the test suite — run tests locally before pushing.
+CI (`.github/workflows/export.yml`) runs the headless **test suite** first, then validates that the project **exports** for linux/windows/macos via `barichello/godot-ci:4.6` (the export job `needs: test`). A green run means tests pass and all three platforms build. Still run tests locally before pushing — it's faster than waiting on CI.
 
 ## Test framework
 
