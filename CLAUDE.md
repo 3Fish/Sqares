@@ -37,7 +37,7 @@ godot --headless --verbose --import
 
 There is no single-test flag. The runner discovers every `_test_*` method in every script under `tests/cases/`. To run a subset, temporarily move other case files out of `tests/cases/`, or invoke a case script's methods from a scratch script.
 
-CI (`.github/workflows/export.yml`) only validates that the project **exports** for linux/windows/macos via `barichello/godot-ci:4.6`. It does **not** run the test suite — run tests locally before pushing.
+CI (`.github/workflows/export.yml`) runs the headless **test suite** first, then validates that the project **exports** for linux/windows/macos via `barichello/godot-ci:4.6` (the export job `needs: test`). A green run means tests pass and all three platforms build. Still run tests locally before pushing — it's faster than waiting on CI.
 
 ## Test framework
 

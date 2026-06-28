@@ -7,8 +7,25 @@ on:
     branches: ["claude/rogue-like-shooter-game-tCOTO", "main"]
 
 jobs:
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    container:
+      image: barichello/godot-ci:4.6
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Import project assets
+        run: godot --headless --verbose --import 2>&1 || true
+
+      - name: Run test suite
+        # The runner exits non-zero if any _test_* method fails, failing the job
+        # and — via `needs: test` below — blocking the platform exports.
+        run: godot --headless --script res://tests/run_tests.gd
+
   export:
     name: Export (${{ matrix.platform }})
+    needs: test
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

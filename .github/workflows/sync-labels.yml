@@ -31,6 +31,8 @@ jobs:
             "status: awaiting-greenlight|1d76db|Refined and ready for the maintainer's manual decision"
             "greenlit|5319e7|Approved by the maintainer for implementation"
             "declined|b60205|Reviewed and not being taken forward"
+            "question|d876e3|Awaiting a maintainer decision — the routine's only dev-flow handoff signal"
+            "Deferred|c5def7|Follow-up work split out of another issue or PR"
           )
           for entry in "${labels[@]}"; do
             IFS='|' read -r name color desc <<< "$entry"
