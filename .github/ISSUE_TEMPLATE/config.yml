@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Bug report
+    url: https://github.com/3Fish/Sqares/issues/new
+    about: Found something broken? Open a blank issue and describe the bug.

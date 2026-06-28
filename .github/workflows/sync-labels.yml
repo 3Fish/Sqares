@@ -1,0 +1,39 @@
+name: Sync labels
+
+# Ensures the labels used by the feature-suggestion workflow exist.
+# The issue form and the suggestion-refinement routine rely on these exact
+# names, so this keeps them defined in version control rather than hand-made
+# in the GitHub UI. Idempotent: `gh label create --force` creates or updates.
+
+on:
+  push:
+    branches: ["main"]
+    paths: [".github/workflows/sync-labels.yml"]
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Create or update labels
+        run: |
+          # name|color|description
+          labels=(
+            "suggestion|0e8a16|A community-suggested feature, before greenlight"
+            "status: needs-refinement|fbca04|New suggestion awaiting the refinement routine"
+            "status: refining|d4c5f9|Refinement routine is waiting on a reply from the suggester"
+            "status: awaiting-greenlight|1d76db|Refined and ready for the maintainer's manual decision"
+            "greenlit|5319e7|Approved by the maintainer for implementation"
+            "declined|b60205|Reviewed and not being taken forward"
+          )
+          for entry in "${labels[@]}"; do
+            IFS='|' read -r name color desc <<< "$entry"
+            echo "Syncing label: $name"
+            gh label create "$name" --color "$color" --description "$desc" --force
+          done

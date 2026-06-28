@@ -1,0 +1,63 @@
+name: Feature suggestion
+description: Suggest a new feature or gameplay idea for Sqares. A Claude routine will ask follow-up questions to refine it before the maintainer reviews.
+title: "[Suggestion]: "
+labels: ["suggestion", "status: needs-refinement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an idea for **Sqares**! 🎉
+
+        Here's what happens next:
+        1. Your suggestion is filed and marked **needs-refinement**.
+        2. A Claude routine will read it and may post **clarification questions** as comments — just reply in the thread to help shape it.
+        3. Once it's well-defined it moves to **awaiting-greenlight**, and the maintainer decides whether to take it on.
+
+        You don't need any access to the repository — filing this issue and replying to comments is all you do.
+  - type: textarea
+    id: idea
+    attributes:
+      label: What's the idea?
+      description: Describe the feature in a sentence or two.
+      placeholder: e.g. A card that briefly reverses gravity for all players when picked.
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does it solve, or why is it fun?
+      description: What's the motivation? What does it add to the game?
+    validations:
+      required: true
+  - type: textarea
+    id: how
+    attributes:
+      label: How might it work? (optional)
+      description: Any thoughts on mechanics, balance, or how it'd fit the existing systems. It's fine to leave this blank — the refinement step will dig in.
+    validations:
+      required: false
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of the game does this touch most?
+      options:
+        - Gameplay / movement
+        - Cards / modifiers
+        - Arenas
+        - Game modes
+        - Audio
+        - Modding API
+        - UI / menus
+        - Other / not sure
+    validations:
+      required: true
+  - type: checkboxes
+    id: acknowledgements
+    attributes:
+      label: Before you submit
+      options:
+        - label: This is a suggestion, not a guarantee — it may be refined, reshaped, or declined by the maintainer.
+          required: true
+        - label: I'll check back for clarification questions and reply to them.
+          required: true
