@@ -71,8 +71,17 @@ func _register_base_stats() -> void:
 	StatRegistry.register("magazine_size",   3.0)   # rounds per magazine
 	StatRegistry.register("reload_time",     1.0)   # idle seconds before a full reload
 
-	# Defensive stats
-	StatRegistry.register("shield_charges",  0.0)
+	# Defensive stats — the reflecting shield (#138). A manually-raised shield
+	# reflects every incoming bullet (straight reversal) for `shield_duration`
+	# seconds; raising it consumes one of `shield_charges` (the max, ammo-clip
+	# style), and `shield_recharge` regenerates +1 charge at a time up to that max.
+	# Every player has one shield by default. `shield_penetration` is the *bullet*
+	# stat that punches through a raised shield: unclamped, `p<0` heals through it,
+	# `p=0` is fully reflected, `0<p` lands `p×damage` and consumes the bullet.
+	StatRegistry.register("shield_charges",     1.0)   # max charges (default: one shield)
+	StatRegistry.register("shield_duration",    0.5)   # seconds the raised shield reflects
+	StatRegistry.register("shield_recharge",    2.0)   # seconds to regenerate one charge
+	StatRegistry.register("shield_penetration", 0.0)   # offensive: fraction of damage through a shield
 
 	# Physics extras (available for mod cards)
 	StatRegistry.register("knockback_force", 0.0)

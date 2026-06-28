@@ -22,6 +22,9 @@ var move_axis: float = 0.0
 var jump: bool = false
 ## True while the shoot action is held.
 var shoot: bool = false
+## True only on the tick the shield action was just pressed (#138); a one-shot
+## edge like `jump`, so it raises the shield once rather than every held tick.
+var shield: bool = false
 ## Normalised aim direction; ZERO when not shooting.
 var aim: Vector2 = Vector2.ZERO
 
@@ -33,6 +36,7 @@ func to_dict() -> Dictionary:
 		"move_axis": move_axis,
 		"jump": jump,
 		"shoot": shoot,
+		"shield": shield,
 		"aim": [aim.x, aim.y],
 	}
 
@@ -46,6 +50,7 @@ static func from_dict(data: Dictionary) -> NetPlayerInput:
 	input.move_axis = clampf(float(data.get("move_axis", 0.0)), -1.0, 1.0)
 	input.jump = bool(data.get("jump", false))
 	input.shoot = bool(data.get("shoot", false))
+	input.shield = bool(data.get("shield", false))
 	input.aim = to_vec2(data.get("aim", null))
 	return input
 

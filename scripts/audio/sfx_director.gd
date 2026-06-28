@@ -35,11 +35,18 @@ const BORDER_CONTACT := "border_contact"
 const ROUND_START := "round_start"
 const ROUND_END := "round_end"
 const MATCH_WIN := "match_win"
+## Played when a player manually raises the reflecting shield (#138), fired from
+## `Player._handle_shield` on a successful activation (a charge was spent).
+const SHIELD_RAISE := "shield_raise"
+## Played when a raised shield deflects an incoming bullet (#138), fired from the
+## reflect seam in `Projectile._physics_process`.
+const SHIELD_REFLECT := "shield_reflect"
 
 ## Every cue this director can request. Lets mods enumerate what to author and
 ## backs the "all names distinct / non-empty" sanity test.
 const ALL_CUES: Array[String] = [
-	SHOOT, BOUNCE, HIT, DEATH, BLOCK_DESTROYED, ROPE_SEVERED, BORDER_CONTACT, ROUND_START, ROUND_END, MATCH_WIN,
+	SHOOT, BOUNCE, HIT, DEATH, BLOCK_DESTROYED, ROPE_SEVERED, BORDER_CONTACT,
+	ROUND_START, ROUND_END, MATCH_WIN, SHIELD_RAISE, SHIELD_REFLECT,
 ]
 
 ## UI cue names requested on the UI bus, not the SFX bus (#58, deferred from #30).

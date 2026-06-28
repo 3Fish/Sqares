@@ -9,6 +9,7 @@ func _test_to_dict_shape() -> void:
 	input.move_axis = -0.5
 	input.jump = true
 	input.shoot = true
+	input.shield = true
 	# 0.5 / -0.5 are exactly representable, so the flattened array compares cleanly.
 	input.aim = Vector2(0.5, -0.5)
 	var d := input.to_dict()
@@ -16,6 +17,7 @@ func _test_to_dict_shape() -> void:
 	assert_almost_eq(d["move_axis"], -0.5, "move_axis serialised")
 	assert_true(d["jump"], "jump serialised")
 	assert_true(d["shoot"], "shoot serialised")
+	assert_true(d["shield"], "shield serialised")
 	assert_eq(d["aim"], [0.5, -0.5], "aim flattened to [x, y]")
 
 
@@ -25,12 +27,14 @@ func _test_from_dict_roundtrip() -> void:
 	original.move_axis = 1.0
 	original.jump = true
 	original.shoot = false
+	original.shield = true
 	original.aim = Vector2(1, 0)
 	var restored := NetPlayerInput.from_dict(original.to_dict())
 	assert_eq(restored.seq, 42, "seq round-trips")
 	assert_almost_eq(restored.move_axis, 1.0, "move_axis round-trips")
 	assert_true(restored.jump, "jump round-trips")
 	assert_false(restored.shoot, "shoot round-trips")
+	assert_true(restored.shield, "shield round-trips")
 	assert_eq(restored.aim, Vector2(1, 0), "aim round-trips")
 
 
@@ -40,6 +44,7 @@ func _test_from_dict_defaults_on_empty() -> void:
 	assert_almost_eq(input.move_axis, 0.0, "missing move_axis -> 0")
 	assert_false(input.jump, "missing jump -> false")
 	assert_false(input.shoot, "missing shoot -> false")
+	assert_false(input.shield, "missing shield -> false")
 	assert_eq(input.aim, Vector2.ZERO, "missing aim -> ZERO")
 
 
