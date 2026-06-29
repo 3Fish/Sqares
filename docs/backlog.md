@@ -8,17 +8,17 @@
 
 # Backlog & dependency overview
 
-last-synced: 2026-06-29T08:05:00Z
+last-synced: 2026-06-29T13:34:50Z
 
-20 issues are open. Since the previous sync: **PR #164 merged** → the Multiplayer
-Demo **#149 shipped and closed**, and its follow-ups were split into the new
-`Deferred` tracker **#163**. Re-auditing the codebase this run also corrected two
-stale rows: **#147 is in fact shipped** (the card-draw handicap helper
-`MatchDirector.resolve_draw_counts` and its full wiring are on `main`; the branch
-was squash-merged), and the maintainer has **decided #112 and #145** (their
-`question` labels were removed on 2026-06-28), so both are now eligible,
-unimplemented forward work. **#145 is in-flight this run**; **#112** is the top
-remaining decided feature (a cross-cutting combat refactor — see its row).
+20 issues are open. Since the previous sync: **PR #165 merged** → the degenerate-
+Teams warning **#145 shipped and closed**, clearing the WIP cap. This run picked
+up the top remaining decided feature, **#112** (friendly-fire card override), and
+opened **PR #167** with its self-contained *core* — a per-shot `friendly_fire`
+multiplier on `ShotSpec`. The two sub-decisions that core surfaced (a
+`vampiric_rounds` rebalance value, and how the multiplier composes with explosion
+splash / homing) were split into the new `Deferred` + `question` issue **#166**;
+#112 itself stays open (its online-replication and per-mode items still ride the
+netcode layer) and is **in-flight** via PR #167.
 
 ## Legend
 
@@ -35,8 +35,9 @@ remaining decided feature (a cross-cutting combat refactor — see its row).
 
 | # | Title | Effort | State | Depends on / notes |
 |---|---|---|---|---|
-| 145 | Teams mode with <2 distinct colours (degenerate count) | S | **in-flight** (PR this run) | **Decided** (`question` removed 2026-06-28): Q1 → (b) *allow but warn*; Q2 → guard at **all N ≥ 2**. Reduces to a pure distinct-colour-count check (`MatchConfig.distinct_team_count < 2`) surfacing a non-blocking warning in the setup-screen Teams preview. From #134 (shipped). Picked up this run — fully decided, self-contained, pure-logic testable. |
-| 112 | Friendly-fire follow-ups (card-effect override) | M | **open — DECIDED, unimplemented** | **Top remaining decided feature.** `question` removed 2026-06-28 with a final spec: a **per-shot `friendly_fire` float** on the #68/#114 `ShotSpec`, default 1 (FF on) / 0 (FF off), **clamped ≥ 0**, stacked in pickup order, scaling **only** the damage dealt to a friendly target; **knockback unchanged**; **lifesteal becomes % of damage dealt** (all shots); **on-hit effects fire on any hit**. Unblocked (#68/#114, #62/#111 shipped). Not picked this run: it is a cross-cutting refactor of the `projectile.gd` friendly-fire seam (direct hit + explosion splash + homing + lifesteal) that wants live playtest verification, and no Godot binary is available in the routine's environment — better taken by a run that can boot the game. The issue's other items (online repl. of the consumed-friendly-shot despawn; future per-mode rules) still ride the netcode layer / future modes. |
+| 112 | Friendly-fire follow-ups (card-effect override) | M | **in-flight** (PR #167) | **Override core shipped to PR #167 this run.** Per the 2026-06-28 spec: a **per-shot `friendly_fire` float** on the #68/#114 `ShotSpec`, default 1 (FF on) / 0 (FF off), **clamped ≥ 0**, stacked in pickup order, scaling **only** the direct-hit damage to a friendly target; **knockback unchanged** (now fires on a friendly hit); **on-hit effects fire on any hit**. The direct-hit seam in `projectile.gd` was the change; explosion splash / homing stay on the binary toggle and lifesteal stays flat (gated off a 0-damage friendly hit) — those two compositions are the split-off **#166**. The issue stays open: its online repl. (consumed-friendly-shot despawn) and per-mode rules still ride the netcode layer / future modes, so PR #167 does **not** `Closes #112`. |
+| 166 | Lifesteal-as-% rebalance + friendly_fire × splash/homing | S | **question** (`Deferred`) | New, split from #112's override PR (#167). **Q1:** `vampiric_rounds`' new fractional value once lifesteal becomes % of damage dealt (`15.0` flat → would read as 1500%) — a balance call. **Q2:** whether the per-shot `friendly_fire` multiplier should scale friendly *explosion splash* and admit teammates to *homing* (today both stay on the binary match toggle, as PR #167 ships). Both are small unit-testable additions at the already-isolated FF seam once decided. |
+| 145 | Teams mode with <2 distinct colours (degenerate count) | S | **shipped/closed** | PR #165 merged (`dc89a02`), closing #145. Listed here only for one run's continuity; not actionable. |
 | 158 | Online replication of the reflecting shield | S | **open** (items 1–2 shipped) | Items 1 (remote shield-up snapshot, #161) and 2 (reflected-bullet re-broadcast, #162) merged. Only **item 3** remains — client-side *prediction* of one's own shield raise, **explicitly optional polish**; the residual (host correction of a mispredicted shield) carries a flicker/charge-on-wire design nuance and is not headlessly testable. Tracker only. |
 | 163 | Multiplayer demo follow-ups (invites + lobby polish) | M–L | **tracker** (Deferred) | New, split out of #149. Sub-items: convenient invites (lobby-code/relay, Steam — large, own design/tech, deferred for prioritisation), per-player identity + colour-based team picking (needs **#66/#82**), surfacing the FF + handicap toggles on the networked host setup (additive), richer join/leave feedback (some of which is a UX call). Not a single clean PR. |
 | 152 | Host migration (re-elect + state transfer) | L | **question** | Blocked on maintainer (re-election rule, departed-host slot, migration pause, RNG-stream position, hard-fail fallback). Builds on #151 (reconnect shipped). |
@@ -89,6 +90,7 @@ needs assets / a live multi-peer session rather than implementation.
 - **Combat/shield:** **#138** shipped; **#158** is its online-replication
   follow-up — items 1–2 shipped, item 3 (own-shield prediction) optional polish.
 - **Teams:** #26/#62/#134 (shipped) underpin the team follow-ups — **#147**
-  (handicap, **shipped**), **#145** (degenerate-team warning, **decided**, this
-  run), and **#112** (FF card-override, **decided**, the top remaining feature).
+  (handicap, **shipped**), **#145** (degenerate-team warning, **shipped/closed**,
+  PR #165), and **#112** (FF card-override, **in-flight** via PR #167, with the
+  lifesteal-% / splash-composition follow-ups split to **#166**).
 - **Platform flags:** #85's children #96/#97/#98 all shipped; nothing left.
