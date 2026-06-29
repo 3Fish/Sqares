@@ -8,17 +8,25 @@
 
 # Backlog & dependency overview
 
-last-synced: 2026-06-29T13:34:50Z
+last-synced: 2026-06-29T18:11:08Z
 
-20 issues are open. Since the previous sync: **PR #165 merged** → the degenerate-
-Teams warning **#145 shipped and closed**, clearing the WIP cap. This run picked
-up the top remaining decided feature, **#112** (friendly-fire card override), and
-opened **PR #167** with its self-contained *core* — a per-shot `friendly_fire`
-multiplier on `ShotSpec`. The two sub-decisions that core surfaced (a
-`vampiric_rounds` rebalance value, and how the multiplier composes with explosion
-splash / homing) were split into the new `Deferred` + `question` issue **#166**;
-#112 itself stays open (its online-replication and per-mode items still ride the
-netcode layer) and is **in-flight** via PR #167.
+20 issues are open. Since the previous sync: **PR #167 merged** (the #112
+friendly-fire override core) and **PR #168 merged** (the #163 networked-lobby
+FF/handicap toggles, reviewed + squash-merged this run). Both source issues stay
+open as trackers (neither PR carried a `Closes`). This run also **corrected a
+stale dependency premise**: the netcode replication epic sub-issues **#27 (full
+combat-state replication)** and **#28 (resilience: disconnect/reconnect + latency
+smoothing)** are **both closed/completed** (#27 on 2026-06-28, #28 on 2026-06-16),
+so the "blocked on the not-yet-merged netcode layer #27" note carried by earlier
+syncs was wrong — those items are **not** prerequisite-blocked. They remain
+un-picked for a different reason: their next increments are online-only visual
+parity that needs a **live multi-peer environment to verify** (the headless
+`--script` harness runs a single process) and/or carry an undecided
+architecture/scope choice. No new issue was implemented this run: every eligible
+issue's next increment is gated on a Tier-1 decision, needs binary audio assets,
+or needs live-multipeer verification with undecided scope. **#147** was handed
+back via the `question` label (its >2-team handicap formula is an undecided
+balance call; the two-team half already shipped).
 
 ## Legend
 
@@ -31,17 +39,24 @@ netcode layer) and is **in-flight** via PR #167.
 - **in-flight** — has an open auto-PR.
 - **blocked/question** — awaiting a maintainer decision (`question` label).
 
+## WIP cap
+
+Auto-authored PRs open: **0** (PR #168 merged this run). Cap is 3, so Phase C is
+free to pick up a new issue — but no eligible issue is currently CLEAR (see
+selection summary above).
+
 ## Actionable / live work (the part selection cares about)
 
 | # | Title | Effort | State | Depends on / notes |
 |---|---|---|---|---|
-| 112 | Friendly-fire follow-ups (card-effect override) | M | **in-flight** (PR #167) | **Override core shipped to PR #167 this run.** Per the 2026-06-28 spec: a **per-shot `friendly_fire` float** on the #68/#114 `ShotSpec`, default 1 (FF on) / 0 (FF off), **clamped ≥ 0**, stacked in pickup order, scaling **only** the direct-hit damage to a friendly target; **knockback unchanged** (now fires on a friendly hit); **on-hit effects fire on any hit**. The direct-hit seam in `projectile.gd` was the change; explosion splash / homing stay on the binary toggle and lifesteal stays flat (gated off a 0-damage friendly hit) — those two compositions are the split-off **#166**. The issue stays open: its online repl. (consumed-friendly-shot despawn) and per-mode rules still ride the netcode layer / future modes, so PR #167 does **not** `Closes #112`. |
-| 166 | Lifesteal-as-% rebalance + friendly_fire × splash/homing | S | **question** (`Deferred`) | New, split from #112's override PR (#167). **Q1:** `vampiric_rounds`' new fractional value once lifesteal becomes % of damage dealt (`15.0` flat → would read as 1500%) — a balance call. **Q2:** whether the per-shot `friendly_fire` multiplier should scale friendly *explosion splash* and admit teammates to *homing* (today both stay on the binary match toggle, as PR #167 ships). Both are small unit-testable additions at the already-isolated FF seam once decided. |
-| 145 | Teams mode with <2 distinct colours (degenerate count) | S | **shipped/closed** | PR #165 merged (`dc89a02`), closing #145. Listed here only for one run's continuity; not actionable. |
-| 158 | Online replication of the reflecting shield | S | **open** (items 1–2 shipped) | Items 1 (remote shield-up snapshot, #161) and 2 (reflected-bullet re-broadcast, #162) merged. Only **item 3** remains — client-side *prediction* of one's own shield raise, **explicitly optional polish**; the residual (host correction of a mispredicted shield) carries a flicker/charge-on-wire design nuance and is not headlessly testable. Tracker only. |
-| 163 | Multiplayer demo follow-ups (invites + lobby polish) | M–L | **tracker** (Deferred) | New, split out of #149. Sub-items: convenient invites (lobby-code/relay, Steam — large, own design/tech, deferred for prioritisation), per-player identity + colour-based team picking (needs **#66/#82**), surfacing the FF + handicap toggles on the networked host setup (additive), richer join/leave feedback (some of which is a UX call). Not a single clean PR. |
+| 147 | Smaller-team card-draw handicap (A4 from #62) | S | **question** (handed off this run) | Two-team half **shipped** (`MatchDirector.resolve_draw_counts` + `team_handicap` setup toggle + tests). Remaining = **>2-team formula (Q1)** plus which-losers (Q2) and fixed-rule-vs-per-`GameMode` (Q3). All three are balance/UX/API calls not derivable from the codebase → `question` applied + comment posted. A one-line Q1 answer unblocks a small pure extension to `resolve_draw_counts`. |
+| 112 | Friendly-fire follow-ups (card-effect override) | M | **tracker** (Deferred) | Override **core shipped** (PR #167): per-shot `friendly_fire` float on `ShotSpec`, scaling direct-hit friendly damage. Remaining items: (1) **online replication of the consumed-friendly-shot despawn** — prereq (#27/#28) now **met**, but introducing host→client authoritative projectile-*despawn* broadcasts raises an **undecided scope/architecture choice** (only consumed-friendly shots, or every host-side despawn? bandwidth trade-off) and is online-only/not headlessly verifiable; (2) per-mode team-interaction rules = **future modes' concern**, no decision now. The FF×splash/homing + lifesteal-% sub-decisions are the `question`-labelled **#166**. Not a clean autonomous pick. |
+| 166 | Lifesteal-as-% rebalance + friendly_fire × splash/homing | S | **question** (`Deferred`) | Split from #112's override PR. **Q1:** `vampiric_rounds`' new fractional value once lifesteal is % of damage (`15.0` flat → 1500%). **Q2:** whether the per-shot `friendly_fire` multiplier scales friendly *explosion splash* and admits teammates to *homing* (today both stay on the binary match toggle). Both small unit-testable additions at the isolated FF seam once decided. |
+| 158 | Online replication of the reflecting shield | S | **open** (items 1–2 shipped) | Items 1 (remote shield-up snapshot, #161) and 2 (reflected-bullet re-broadcast, #162) merged. Only **item 3** remains — client-side *prediction* of one's own shield raise, **explicitly optional polish**; host correction of a mispredicted shield carries a flicker/charge-on-wire design nuance and is not headlessly testable. Tracker only. |
+| 163 | Multiplayer demo follow-ups (invites + lobby polish) | M–L | **tracker** (Deferred) | FF + handicap toggle surfacing **shipped this run** (PR #168). Remaining sub-items: convenient invites (lobby-code/relay, Steam — large, own design/tech, **deferred for prioritisation** by the maintainer, not a blocking question), per-player identity + colour-based team picking (**blocked on #66/#82** identity replication), richer join/leave feedback (some of which is a UX call). Not a single clean PR. |
 | 152 | Host migration (re-elect + state transfer) | L | **question** | Blocked on maintainer (re-election rule, departed-host slot, migration pause, RNG-stream position, hard-fail fallback). Builds on #151 (reconnect shipped). |
-| 85 | Combinable platform flags (Physics, Destructible) + Chain/Rope | L | **shipped** | Decided long ago; split into #96/#97/#98, **all shipped** (incl. Chain/Rope #98, `test_rope_visual`). The flags are independent booleans so they already combine. Effectively an open parent; the maintainer may close it. |
+| 151 | Mid-match disconnect/reconnect + host migration | — | **shipped (reconnect) / parent** | Reconnect + slot-hold merged (PR #153). Remaining work = host migration, split to **#152** (`question`). No clean residual; the maintainer may close it once #152 lands. |
+| 85 | Combinable platform flags (Physics, Destructible) + Chain/Rope | L | **shipped** | Split into #96/#97/#98, **all shipped** (incl. Chain/Rope #98). The flags are independent booleans so they already combine. Effectively an open parent; the maintainer may close it. |
 
 ## Epics (umbrella trackers — never a single PR)
 
@@ -51,15 +66,15 @@ All listed sub-issues are now closed/shipped except the netcode host-migration s
 |---|---|---|
 | 11 | Card draw & pick system | #16, #17, #18 (all shipped) |
 | 12 | Stats & per-card effect engine | #19, #20, #21, #22 (all shipped) |
-| 13 | Multiplayer: local + online netcode | #23–#28 shipped; reconnect **#151** shipped (PR #153), host migration split to **#152** (`question`) |
+| 13 | Multiplayer: local + online netcode | #23–#27 **all closed** (incl. #27 combat replication); resilience **#28 closed**; reconnect **#151** shipped (PR #153); host migration split to **#152** (`question`) |
 | 14 | Audio: sound & music system | #29, #30, #31 (shipped; assets still needed — see trackers #47/#56) |
 | 15 | In-game visual arena editor | #32–#36 (all shipped) |
 
 ## Deferred-question trackers (open; concrete items mostly shipped)
 
 These collect design questions from an earlier issue; their actionable items were
-generally routed into separate, now-shipped issues. Residual content is minor or
-needs assets / a live multi-peer session rather than implementation.
+generally routed into separate, now-shipped issues. Residual content is minor,
+needs assets, or needs a live multi-peer session rather than implementation.
 
 | # | From | Residual |
 |---|---|---|
@@ -67,30 +82,33 @@ needs assets / a live multi-peer session rather than implementation.
 | 45 | #16 (card model) | rarity/effect-ref notes; superseded by #18/#20 (shipped) |
 | 47 | #29 (audio foundation) | needs audio assets; options-scope notes |
 | 48 | #25 (local players) | match-setup UI routed to #26 (shipped) |
-| 49 | #21 (homing/knockback) | tuning notes; team-filtering went to #62 (shipped) |
+| 49 | #21 (homing/knockback) | homing-feel tuning (a balance call); team-filtering went to #62 (shipped) |
 | 56 | #31 (music crossfade) | needs music assets; mapping/tuning notes |
-| 66 | #23 (netcode foundation) | live combat repl. → #27 (shipped); seed transport done; lobby UI → #149 (shipped); residual = spectator support (undesigned) |
+| 66 | #23 (netcode foundation) | live combat repl → #27 (**closed**); seed transport done; lobby UI → #149 (shipped); residual = **spectator support (undesigned, large)** |
 | 151 | #82 (reconnect) | reconnect/slot-hold shipped (PR #153); host migration → #152 (`question`) |
 
 ## Shipped but still open (not actionable)
 
-- **#147** — card-draw handicap shipped (`resolve_draw_counts` + setup toggle on
-  `main`; branch squash-merged). The maintainer may close it.
+- **#147** — two-team handicap shipped; held open for the >2-team `question`
+  (handed off this run).
 - **#149** — closed by PR #164; follow-ups tracked in **#163**.
-- **#151** — reconnect / slot-hold merged (PR #153); stays open as the parent for
-  host migration **#152**. The maintainer may close it.
+- **#151** — reconnect / slot-hold merged (PR #153); parent for host migration
+  **#152**.
 - **#85** — its #96/#97/#98 children all shipped (see Actionable table). Parent only.
 
 ## Dependency notes
 
-- **Netcode spine:** #13 → #23/#24/#25/#26/#27/#28 (all shipped) → reconnect
-  **#151** (shipped) → host migration **#152** (`question`). The Multiplayer Demo
-  **#149** (shipped) sat on top of this spine; its follow-ups are tracked in
-  **#163** (per-player identity rides #66/#82).
+- **Netcode spine:** #13 → #23/#24/#25/#26 (shipped) → **#27 combat replication
+  (closed)** → **#28 resilience (closed)** → reconnect **#151** (shipped) → host
+  migration **#152** (`question`). The Multiplayer Demo **#149** (shipped) sat on
+  top of this spine; its follow-ups are tracked in **#163** (per-player identity
+  rides #66/#82). With #27/#28 closed, the remaining replication follow-ups
+  (#112 item 1, #158 item 3) are no longer prereq-blocked — they're held by
+  live-multipeer verification limits and/or an undecided scope choice.
 - **Combat/shield:** **#138** shipped; **#158** is its online-replication
   follow-up — items 1–2 shipped, item 3 (own-shield prediction) optional polish.
-- **Teams:** #26/#62/#134 (shipped) underpin the team follow-ups — **#147**
-  (handicap, **shipped**), **#145** (degenerate-team warning, **shipped/closed**,
-  PR #165), and **#112** (FF card-override, **in-flight** via PR #167, with the
-  lifesteal-% / splash-composition follow-ups split to **#166**).
+- **Teams:** #26/#62/#134 (shipped) underpin the team follow-ups — friendly fire
+  (#62, shipped; card-override core #112 shipped via PR #167; lobby toggle #168),
+  the smaller-team handicap (**#147** — two-team shipped, >2-team `question`),
+  and the degenerate-team warning (#145, shipped/closed via PR #165).
 - **Platform flags:** #85's children #96/#97/#98 all shipped; nothing left.
