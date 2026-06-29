@@ -36,6 +36,13 @@ var ammo: int = -1
 ## "not carried" (no weapon, or an older payload), so a partial snapshot leaves
 ## the client's local readout alone rather than forcing it to 0%.
 var reload_progress: float = -1.0
+## Whether the reflecting shield (#138) is currently up, host-authoritative
+## (#158): a client never ticks a puppet's shield clock, so the host surfaces the
+## state here for a shield visual to read true on every peer. Unlike ammo/reload
+## there is no "not carried" sentinel — the host always knows `is_shielded()`
+## (true or false), and a missing key (older payload) defaults to `false`, which
+## safely shows no shield rather than a spurious one.
+var shielded: bool = false
 
 
 ## Serialises to a flat, JSON-portable dictionary. Vectors are flattened to
@@ -49,6 +56,7 @@ func to_dict() -> Dictionary:
 		"last_input_seq": last_input_seq,
 		"ammo": ammo,
 		"reload_progress": reload_progress,
+		"shielded": shielded,
 	}
 
 
@@ -63,6 +71,7 @@ static func from_dict(data: Dictionary) -> NetPlayerState:
 	s.last_input_seq = int(data.get("last_input_seq", 0))
 	s.ammo = int(data.get("ammo", -1))
 	s.reload_progress = float(data.get("reload_progress", -1.0))
+	s.shielded = bool(data.get("shielded", false))
 	return s
 
 
@@ -81,6 +90,8 @@ static func capture(player: Object, p_last_input_seq: int = 0) -> NetPlayerState
 	var hp = player.get("health")
 	if hp != null:
 		s.health = float(hp.current_hp)
+		if hp.has_method("is_shielded"):
+			s.shielded = bool(hp.is_shielded())
 	var weapon = player.get("weapon")
 	if weapon != null and weapon.has_method("get_ammo"):
 		s.ammo = int(weapon.get_ammo())
@@ -100,6 +111,7 @@ func apply_to(player: Object) -> void:
 	if hp != null:
 		hp.current_hp = health
 	apply_ammo_to(player)
+	apply_shield_to(player)
 
 
 ## Adopts the authoritative magazine count and idle-reload progress onto a live
@@ -118,6 +130,19 @@ func apply_ammo_to(player: Object) -> void:
 		weapon.set_ammo(ammo)
 	if reload_progress >= 0.0 and weapon.has_method("set_reload_progress"):
 		weapon.set_reload_progress(reload_progress)
+
+
+## Stamps the host's reflecting-shield state onto a live puppet's health (#158),
+## without touching its transform / health / ammo. A client never ticks a puppet's
+## shield clock, so the host surfaces `is_shielded()` here for the shield visual to
+## read true on every peer — paralleling the host-authoritative ammo/reload adopt.
+## Guarded by `has_method`, so a healthless or old-style player is a no-op.
+func apply_shield_to(player: Object) -> void:
+	if player == null:
+		return
+	var hp = player.get("health")
+	if hp != null and hp.has_method("set_shielded"):
+		hp.set_shielded(shielded)
 
 
 static func _to_vec2(value: Variant) -> Vector2:

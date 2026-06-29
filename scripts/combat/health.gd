@@ -77,6 +77,25 @@ func is_shielded() -> bool:
 	return _shield_active_remaining > 0.0
 
 
+## Forces the reflecting-shield up/down state on a puppet for replication (#158).
+## A client's puppet never runs `Player._step`, so `advance_shield` never ticks
+## and its shield clock can't follow the host. The per-player snapshot carries the
+## host's `is_shielded()` and this stamps it onto the puppet, so `is_shielded()` —
+## and any shield visual that reads it — mirrors the authority on every peer. A
+## fresh raise re-emits `shield_raised`, so an edge-triggered visual fires on a
+## remote shield-up just as it does locally. Purely cosmetic: puppets are
+## visual-only and adjudicate no hits, so this has no gameplay effect.
+func set_shielded(active: bool) -> void:
+	if not active:
+		_shield_active_remaining = 0.0
+		return
+	if not is_shielded():
+		shield_raised.emit()
+	# Puppets don't tick this down, so any positive value holds the window open
+	# until the next snapshot clears it; prefer the real duration when known.
+	_shield_active_remaining = shield_duration if shield_duration > 0.0 else 1.0
+
+
 ## Advances the shield clocks by one tick: closes the reflect window when its
 ## duration lapses and regenerates one charge every `shield_recharge` seconds
 ## while below the cap. Driven by `Player._step`, so it ticks in lockstep with

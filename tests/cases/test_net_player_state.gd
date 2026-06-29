@@ -6,6 +6,14 @@ extends TestCase
 # be exercised without a scene tree.
 class _StubHealth extends RefCounted:
 	var current_hp: float = 0.0
+	var _shielded: bool = false
+	func is_shielded() -> bool: return _shielded
+	func set_shielded(active: bool) -> void: _shielded = active
+
+# A health stand-in WITHOUT the shield methods, to prove capture/apply guard on
+# `has_method` and stay a no-op for an old-style or shieldless player.
+class _BareHealth extends RefCounted:
+	var current_hp: float = 0.0
 
 class _StubWeapon extends RefCounted:
 	var _ammo: int = 0
@@ -213,3 +221,61 @@ func _test_apply_ammo_to_weaponless_player_is_safe() -> void:
 	p.weapon = null
 	s.apply_ammo_to(p)  # must not crash
 	assert_true(true, "apply_ammo_to with no weapon is a no-op")
+
+
+# --- reflecting-shield-up replication (#158) ---------------------------------
+
+func _test_shielded_serialises_and_roundtrips() -> void:
+	var s := NetPlayerState.new()
+	s.shielded = true
+	assert_eq(s.to_dict()["shielded"], true, "shielded serialised")
+	assert_eq(NetPlayerState.from_dict(s.to_dict()).shielded, true, "shielded round-trips")
+	assert_eq(NetPlayerState.from_dict({}).shielded, false, "missing shielded -> false (no shield shown)")
+
+
+func _test_capture_reads_shield_state() -> void:
+	var hp := _StubHealth.new()
+	hp._shielded = true
+	var p := _StubPlayer.new()
+	p.health = hp
+	assert_eq(NetPlayerState.capture(p).shielded, true, "captures the host's is_shielded()")
+	hp._shielded = false
+	assert_eq(NetPlayerState.capture(p).shielded, false, "captures a lowered shield as false")
+
+
+func _test_capture_tolerates_health_without_shield_api() -> void:
+	# An old-style health node exposing no is_shielded() must not crash capture; the
+	# flag simply stays at its safe default.
+	var p := _StubPlayer.new()
+	p.health = _BareHealth.new()
+	assert_eq(NetPlayerState.capture(p).shielded, false, "no is_shielded() -> shielded stays false")
+
+
+func _test_apply_shield_to_stamps_puppet_health() -> void:
+	var s := NetPlayerState.new()
+	s.position = Vector2(10, 10)  # should be ignored by the shield-only path
+	s.shielded = true
+	var hp := _StubHealth.new()
+	var p := _StubPlayer.new()
+	p.health = hp
+	s.apply_shield_to(p)
+	assert_eq(hp._shielded, true, "apply_shield_to adopts the host's shield-up state")
+	assert_eq(p.global_position, Vector2.ZERO, "apply_shield_to leaves the transform untouched")
+	# A lowered host shield clears a stale puppet shield.
+	s.shielded = false
+	s.apply_shield_to(p)
+	assert_eq(hp._shielded, false, "apply_shield_to clears the shield when the host's is down")
+
+
+func _test_apply_shield_to_tolerates_missing_api_and_null() -> void:
+	# Healthless / null player and a health without set_shielded are all no-ops.
+	var s := NetPlayerState.new()
+	s.shielded = true
+	s.apply_shield_to(null)  # must not crash
+	var p := _StubPlayer.new()
+	p.health = _BareHealth.new()
+	s.apply_shield_to(p)  # must not crash (no set_shielded)
+	var p2 := _StubPlayer.new()
+	p2.health = null
+	s.apply_shield_to(p2)  # must not crash
+	assert_true(true, "apply_shield_to is a no-op without a shield-capable health")
