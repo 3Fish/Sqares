@@ -34,6 +34,16 @@ var explosion_knockback_factor: float = 0.5
 ## deflected and lands `p × damage` on the shielded target (negative heals,
 ## `p > 1` exceeds the base hit), consuming the bullet like a normal hit.
 var shield_penetration: float = 0.0
+## Friendly-fire multiplier (#112): scales the direct-hit damage dealt to a
+## *same-team* target (the shooter's own bounce-back included), clamped `>= 0`.
+## Seeded per shot from the match FF toggle (`1.0` on / `0.0` off) and reshaped by
+## pre-shoot effects in pickup order; an enemy hit ignores it and lands full
+## damage. At `0` a teammate takes no damage but the bullet is still consumed and
+## still knocks back / fires on-hit effects — the old "FF off = silent fizzle" is
+## gone (the decided change). Composition with explosion splash / homing and the
+## lifesteal-as-%-of-damage rebalance are split to #166; this scales the direct
+## hit only.
+var friendly_fire: float = 1.0
 var shooter: Node = null
 ## True for client-side instances (predicted or replicated, #27): they fly and
 ## bounce for feedback but never deal damage — hits are adjudicated host-only.
@@ -134,26 +144,46 @@ func _physics_process(delta: float) -> void:
 			# hence a host re-broadcast rather than client-side prediction.
 			NetReplicator.broadcast_projectile(self, combatant_id(collider))
 			return
-		if not _may_damage(collider):
-			# Friendly fire is off and this is a teammate (or the shooter itself
-			# on a bounce-back): the shot deals no damage and is consumed — no
-			# knockback, explosion, lifesteal, HIT cue, or effect dispatch (#62).
-			queue_free()
-			return
 		# A penetrating bullet against a raised shield (#138) lands `p × damage`
 		# (negative heals); otherwise the full hit. The bullet is consumed either
-		# way, and knockback / explosion / lifesteal / effects resolve as a normal
-		# hit — explosion AoE in particular always damages, shield or not.
-		var hit_damage: float = penetration_damage(damage, shield_penetration) if shielded else damage
-		_apply_player_damage(collider, hit_damage)
+		# way, and knockback / explosion / lifesteal / effects resolve — explosion
+		# AoE in particular always damages, shield or not.
+		var base_hit: float = penetration_damage(damage, shield_penetration) if shielded else damage
+		# Friendly fire (#112): a same-team target — the shooter's own bounce-back
+		# included — takes `base × friendly_fire`, clamped `>= 0`, so an FF-off hit
+		# deals 0 while a card can tune the fraction; an enemy always takes the full
+		# base. Unlike the old #62 rule the friendly hit is no longer a silent
+		# fizzle: the bullet is consumed and still knocks back / fires on-hit effects
+		# below. Explosion splash and homing still follow the binary match toggle
+		# (#166 Q2), so a 0-multiplier teammate stays out of the blast as before.
+		var friendly := is_friendly_target(combatant_id(shooter), combatant_id(collider), GameManager.team_of)
+		var hit_damage: float = friendly_hit_damage(base_hit, friendly_fire) if friendly else base_hit
+		# Apply the hit only when it actually changes HP. A 0-damage friendly hit (FF
+		# off) must not call take_damage(0): that would emit a `damaged` signal with no
+		# HP lost and spuriously fire the teammate's on_take_damage effects / hit feed-
+		# back, breaking the invariant that `damaged` only fires on real loss. Enemy
+		# hits always apply, so they stay byte-identical.
+		if hit_damage != 0.0 or not friendly:
+			_apply_player_damage(collider, hit_damage)
 		if knockback_force > 0.0 and collider.has_method("apply_knockback"):
 			collider.apply_knockback(velocity.normalized() * knockback_force)
-		if explosion_radius > 0.0:
+		# Explosion is held at the pre-#112 behaviour: it fires only when the hit was
+		# damageable under the binary match toggle (enemy, or any hit with FF on), so
+		# an FF-off teammate direct hit still does not detonate — exactly as the old
+		# fizzle did. Whether the per-shot friendly_fire multiplier should instead
+		# scale friendly splash is the open #166 Q2 call, deliberately not preempted.
+		if explosion_radius > 0.0 and (GameManager.friendly_fire or not friendly):
 			_detonate(collision.get_position(), collider)
-		if lifesteal > 0.0 and is_instance_valid(shooter) and shooter.has_method("heal"):
+		# Lifesteal stays a flat per-hit heal in this PR, but a friendly hit that
+		# dealt no positive damage grants no HP — a teammate hit with FF off never
+		# heals the shooter (#112). Enemy hits are unchanged. The lifesteal-as-
+		# percentage-of-damage rebalance is split to #166.
+		if lifesteal > 0.0 and (not friendly or hit_damage > 0.0) and is_instance_valid(shooter) and shooter.has_method("heal"):
 			shooter.heal(lifesteal)
 		SfxDirector.play(SfxDirector.HIT)
-		EffectEngine.notify_hit(shooter if is_instance_valid(shooter) else null, collider, self, damage)
+		# On-hit effects fire on any hit, friend or foe (#112): they read the hit
+		# context (target, the damage actually dealt) and adapt their own behaviour.
+		EffectEngine.notify_hit(shooter if is_instance_valid(shooter) else null, collider, self, hit_damage)
 		queue_free()
 	elif is_block:
 		# Block (#96/#97): impart a mass/velocity-scaled impulse into a physics
@@ -390,13 +420,24 @@ static func filter_hostile(candidates: Array, shooter_id: int, ff: bool, team_ma
 	return out
 
 
-## Whether this bullet may deal damage to `target`, reading the live friendly-fire
-## rule and team map. Used by the direct-hit path to decide between dealing damage
-## and consuming a friendly shot.
-func _may_damage(target: Object) -> bool:
-	return is_hostile(
-		combatant_id(shooter), combatant_id(target),
-		GameManager.friendly_fire, GameManager.team_of)
+## Whether `target_id` is friendly to `shooter_id` — on the same team, the
+## shooter itself (a bounce-back self-hit) included. This is the team-membership
+## question only, independent of the match FF toggle (the toggle instead seeds
+## the per-shot `friendly_fire` multiplier), so the direct-hit path can scale a
+## friendly hit by that multiplier rather than fizzling it (#112). A non-combatant
+## (id -1) is never friendly, so a non-player target always takes the full hit.
+## Pure so the team check is unit-tested without a scene.
+static func is_friendly_target(shooter_id: int, target_id: int, team_map: Dictionary) -> bool:
+	return not is_hostile(shooter_id, target_id, false, team_map)
+
+
+## The direct-hit damage a bullet deals to a *friendly* target: `base_damage ×
+## friendly_fire`, with the multiplier clamped to `>= 0` so a malformed/negative
+## value zeroes the hit rather than healing the teammate (#112). The base damage
+## sign is preserved, so a shield-penetration heal-through bullet (#138) on a
+## teammate still heals. Pure so the maths is unit-tested without a scene.
+static func friendly_hit_damage(base_damage: float, multiplier: float) -> float:
+	return base_damage * maxf(multiplier, 0.0)
 
 
 # --- Reflecting shield (#138) -----------------------------------------------

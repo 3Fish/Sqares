@@ -260,11 +260,15 @@ func _advance_pending(delta: float) -> void:
 
 
 ## A ShotSpec seeded from this weapon's current stats, for effects to reshape.
+## `friendly_fire` is seeded from the live match toggle (#112) — `1.0` when on,
+## `0.0` when off — so by default a teammate takes full / no direct-hit damage; a
+## pre-shoot effect can then tune it (e.g. let shots pass through teammates).
 func _build_shot_spec() -> ShotSpec:
 	return ShotSpec.new(
 		damage, bullet_speed, bullet_scale, bullet_bounces,
 		bullet_homing, lifesteal, knockback_force, explosion_radius,
 		explosion_damage_factor, explosion_knockback_factor, shield_penetration,
+		1.0 if GameManager.friendly_fire else 0.0,
 	)
 
 
@@ -279,6 +283,7 @@ func _spawn_projectile(spec: ShotSpec, direction: Vector2, net_id: String, silen
 		spec.explosion_damage_factor, spec.explosion_knockback_factor,
 	)
 	proj.shield_penetration = spec.shield_penetration
+	proj.friendly_fire = spec.friendly_fire
 	proj.net_id = net_id
 	# Hit detection and damage are host-only (#27): every projectile spawned on
 	# a client — its own predicted shots included — is purely visual.

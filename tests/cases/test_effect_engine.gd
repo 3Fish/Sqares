@@ -73,6 +73,25 @@ class _CancelShot extends CardEffect:
 		ctx.shot.cancelled = true
 
 
+## Pre-shoot effects that reshape the per-shot friendly_fire multiplier (#112) —
+## an additive "less friendly fire" and a multiplicative one — used to show the
+## maintainer's worked stacking example through the engine.
+class _AddFriendlyFire extends CardEffect:
+	var amount: float = -0.1
+	func _init(p_amount: float = -0.1) -> void:
+		amount = p_amount
+	func on_before_shoot(ctx: EffectContext) -> void:
+		ctx.shot.friendly_fire += amount
+
+
+class _MultiplyFriendlyFire extends CardEffect:
+	var factor: float = 1.1
+	func _init(p_factor: float = 1.1) -> void:
+		factor = p_factor
+	func on_before_shoot(ctx: EffectContext) -> void:
+		ctx.shot.friendly_fire *= factor
+
+
 # --- Cases -----------------------------------------------------------------
 
 func _test_apply_effect_attaches_and_fires_on_apply() -> void:
@@ -296,6 +315,27 @@ func _test_before_shoot_effects_stack_in_pickup_order() -> void:
 	var spec_b := ShotSpec.new()  # 1
 	EffectEngine.notify_before_shoot(add_first, null, spec_b, Vector2.UP)
 	assert_eq(spec_b.bullet_count, 6, "+2 then x2: (1+2)*2 == 6 bullets")
+
+
+func _test_before_shoot_effects_stack_friendly_fire() -> void:
+	# The maintainer's worked friendly-fire example (#112): a "-0.1" effect then a
+	# "x1.1" effect, in pickup order. With FF on (seed 1.0) → (1 - 0.1) * 1.1 ==
+	# 0.99; with FF off (seed 0.0) → (0 - 0.1) * 1.1 == -0.11 (clamped to 0 only at
+	# the hit, so the spec value stays negative here).
+	var ff_on := _StubPlayer.new()
+	EffectEngine.apply_effect(ff_on, _AddFriendlyFire.new(-0.1))       # picked first
+	EffectEngine.apply_effect(ff_on, _MultiplyFriendlyFire.new(1.1))   # picked second
+	var spec_on := ShotSpec.new()  # friendly_fire defaults to 1.0 (FF on seed)
+	EffectEngine.notify_before_shoot(ff_on, null, spec_on, Vector2.UP)
+	assert_almost_eq(spec_on.friendly_fire, 0.99, "FF on: (1 - 0.1) * 1.1 == 0.99")
+
+	var ff_off := _StubPlayer.new()
+	EffectEngine.apply_effect(ff_off, _AddFriendlyFire.new(-0.1))      # picked first
+	EffectEngine.apply_effect(ff_off, _MultiplyFriendlyFire.new(1.1))  # picked second
+	var spec_off := ShotSpec.new()
+	spec_off.friendly_fire = 0.0  # Weapon seeds 0.0 when the match FF toggle is off
+	EffectEngine.notify_before_shoot(ff_off, null, spec_off, Vector2.UP)
+	assert_almost_eq(spec_off.friendly_fire, -0.11, "FF off: (0 - 0.1) * 1.1 == -0.11 (clamped at the hit)")
 
 
 func _test_before_shoot_can_cancel_the_shot() -> void:

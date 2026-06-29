@@ -65,6 +65,16 @@ var explosion_knockback_factor: float = 0.5
 ## reflected). Default matches the registered stat default (0.0).
 var shield_penetration: float = 0.0
 
+## Friendly-fire multiplier (#112): scales the direct-hit damage dealt to a
+## *same-team* target (an enemy always takes full damage regardless). `Weapon`
+## seeds it from the match friendly-fire toggle — `1.0` when FF is on, `0.0` when
+## off — and pre-shoot effects then reshape it in pickup order like every other
+## shot attribute, so a card can grant "shots pass through teammates" (`0`),
+## "reduced friendly fire" (`0.5`), or "harm everyone" (`> 0` while FF is off).
+## Clamped to `>= 0` at the hit (no healing teammates); the default `1.0` keeps a
+## bare `ShotSpec.new()` dealing full friendly damage.
+var friendly_fire: float = 1.0
+
 
 func _init(
 	p_damage: float = 25.0,
@@ -78,6 +88,7 @@ func _init(
 	p_explosion_damage_factor: float = 0.5,
 	p_explosion_knockback_factor: float = 0.5,
 	p_shield_penetration: float = 0.0,
+	p_friendly_fire: float = 1.0,
 ) -> void:
 	damage = p_damage
 	speed = p_speed
@@ -90,6 +101,7 @@ func _init(
 	explosion_damage_factor = p_explosion_damage_factor
 	explosion_knockback_factor = p_explosion_knockback_factor
 	shield_penetration = p_shield_penetration
+	friendly_fire = p_friendly_fire
 
 
 ## Whether this spec results in any projectile being fired. False when an effect
