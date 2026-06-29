@@ -4,7 +4,7 @@ extends TestCase
 ## driven from a shared keyboard/gamepad setup (#25).
 
 const PLAYER_ACTIONS := [
-	"move_left", "move_right", "jump", "shoot",
+	"move_left", "move_right", "jump", "shoot", "shield",
 	"aim_left", "aim_right", "aim_up", "aim_down",
 ]
 

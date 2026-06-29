@@ -29,6 +29,11 @@ var explosion_radius: float = 0.0
 ## stats (0.5) so an old call site / bare `Projectile.new()` behaves sanely.
 var explosion_damage_factor: float = 0.5
 var explosion_knockback_factor: float = 0.5
+## Shield penetration (#138): the fraction of this bullet's damage that punches
+## through a raised shield. `0` (the default) is fully reflected; `p != 0` is not
+## deflected and lands `p × damage` on the shielded target (negative heals,
+## `p > 1` exceeds the base hit), consuming the bullet like a normal hit.
+var shield_penetration: float = 0.0
 var shooter: Node = null
 ## True for client-side instances (predicted or replicated, #27): they fly and
 ## bounce for feedback but never deal damage — hits are adjudicated host-only.
@@ -108,13 +113,29 @@ func _physics_process(delta: float) -> void:
 			SfxDirector.play(SfxDirector.HIT)
 			queue_free()
 			return
+		var shielded := _target_shielded(collider)
+		if shielded and shield_penetration == 0.0:
+			# Raised shield, no penetration (#138): reflect the bullet straight back
+			# and hand it to the deflector, so a well-timed counter can turn the shot
+			# on the original shooter (or, with FF off, across teams). The deflect
+			# precedes the friendly-fire check on purpose, and the bullet keeps
+			# flying rather than being consumed.
+			velocity = reflect_velocity(velocity)
+			shooter = collider
+			SfxDirector.play(SfxDirector.SHIELD_REFLECT)
+			return
 		if not _may_damage(collider):
 			# Friendly fire is off and this is a teammate (or the shooter itself
 			# on a bounce-back): the shot deals no damage and is consumed — no
 			# knockback, explosion, lifesteal, HIT cue, or effect dispatch (#62).
 			queue_free()
 			return
-		collider.take_damage(damage, shooter if is_instance_valid(shooter) else null)
+		# A penetrating bullet against a raised shield (#138) lands `p × damage`
+		# (negative heals); otherwise the full hit. The bullet is consumed either
+		# way, and knockback / explosion / lifesteal / effects resolve as a normal
+		# hit — explosion AoE in particular always damages, shield or not.
+		var hit_damage: float = penetration_damage(damage, shield_penetration) if shielded else damage
+		_apply_player_damage(collider, hit_damage)
 		if knockback_force > 0.0 and collider.has_method("apply_knockback"):
 			collider.apply_knockback(velocity.normalized() * knockback_force)
 		if explosion_radius > 0.0:
@@ -366,3 +387,36 @@ func _may_damage(target: Object) -> bool:
 	return is_hostile(
 		combatant_id(shooter), combatant_id(target),
 		GameManager.friendly_fire, GameManager.team_of)
+
+
+# --- Reflecting shield (#138) -----------------------------------------------
+
+## Whether `target` currently has a raised reflecting shield. A target exposing
+## no `is_shielded` (a block already handled above, or a test stub) is unshielded.
+func _target_shielded(target: Object) -> bool:
+	return target.has_method("is_shielded") and target.is_shielded()
+
+
+## Applies a penetrating/normal hit's damage to `target`, routing a negative
+## amount (a `shield_penetration < 0` "heal through the shield" bullet) to `heal`
+## so HP is correctly restored and capped rather than added uncapped.
+func _apply_player_damage(target: Object, amount: float) -> void:
+	if amount < 0.0 and target.has_method("heal"):
+		target.heal(-amount)
+	else:
+		target.take_damage(amount, shooter if is_instance_valid(shooter) else null)
+
+
+## A bullet's velocity after a shield deflects it: straight reversal (#138 A2) —
+## the same speed, sent back the way it came. Pure so the reflection is unit-
+## tested without a scene.
+static func reflect_velocity(p_velocity: Vector2) -> Vector2:
+	return -p_velocity
+
+
+## The HP delta a penetrating bullet lands on a shielded target (#138): `damage ×
+## penetration`. Unclamped, mirroring the stat — a negative fraction heals, a
+## fraction above 1 exceeds the base hit. Pure so the maths is unit-tested
+## without a scene.
+static func penetration_damage(base_damage: float, penetration: float) -> float:
+	return base_damage * penetration

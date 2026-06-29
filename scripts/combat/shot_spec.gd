@@ -60,6 +60,10 @@ var explosion_radius: float = 0.0
 ## knockback`. Defaults match the registered stat defaults (0.5).
 var explosion_damage_factor: float = 0.5
 var explosion_knockback_factor: float = 0.5
+## Shield penetration (#138), overridable per-shot like the other stats. The
+## fraction of damage the bullet lands through a raised shield (`0` = fully
+## reflected). Default matches the registered stat default (0.0).
+var shield_penetration: float = 0.0
 
 
 func _init(
@@ -73,6 +77,7 @@ func _init(
 	p_explosion_radius: float = 0.0,
 	p_explosion_damage_factor: float = 0.5,
 	p_explosion_knockback_factor: float = 0.5,
+	p_shield_penetration: float = 0.0,
 ) -> void:
 	damage = p_damage
 	speed = p_speed
@@ -84,6 +89,7 @@ func _init(
 	explosion_radius = p_explosion_radius
 	explosion_damage_factor = p_explosion_damage_factor
 	explosion_knockback_factor = p_explosion_knockback_factor
+	shield_penetration = p_shield_penetration
 
 
 ## Whether this spec results in any projectile being fired. False when an effect

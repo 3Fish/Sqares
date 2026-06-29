@@ -10,6 +10,10 @@ var bullet_scale: float = 1.0
 var bullet_bounces: int = 0
 var bullet_homing: float = 0.0
 var lifesteal: float = 0.0
+## Shield penetration (#138): the fraction of damage this weapon's bullets land
+## through a raised shield. `0` is fully reflected; carried onto every shot so a
+## card can grant armour-piercing rounds.
+var shield_penetration: float = 0.0
 var knockback_force: float = 0.0
 var explosion_radius: float = 0.0
 ## Explosion feel (#52): the blast deals `explosion_damage_factor × damage` to
@@ -60,6 +64,7 @@ func apply_stats(stats: Dictionary) -> void:
 	bullet_bounces = int(stats.get("bullet_bounces", float(bullet_bounces)))
 	bullet_homing  = stats.get("bullet_homing",     bullet_homing)
 	lifesteal      = stats.get("lifesteal",        lifesteal)
+	shield_penetration = stats.get("shield_penetration", shield_penetration)
 	knockback_force = stats.get("knockback_force",  knockback_force)
 	explosion_radius = stats.get("explosion_radius", explosion_radius)
 	explosion_damage_factor = stats.get("explosion_damage_factor", explosion_damage_factor)
@@ -259,7 +264,7 @@ func _build_shot_spec() -> ShotSpec:
 	return ShotSpec.new(
 		damage, bullet_speed, bullet_scale, bullet_bounces,
 		bullet_homing, lifesteal, knockback_force, explosion_radius,
-		explosion_damage_factor, explosion_knockback_factor,
+		explosion_damage_factor, explosion_knockback_factor, shield_penetration,
 	)
 
 
@@ -273,6 +278,7 @@ func _spawn_projectile(spec: ShotSpec, direction: Vector2, net_id: String, silen
 		get_parent(), spec.homing, spec.knockback, spec.explosion_radius,
 		spec.explosion_damage_factor, spec.explosion_knockback_factor,
 	)
+	proj.shield_penetration = spec.shield_penetration
 	proj.net_id = net_id
 	# Hit detection and damage are host-only (#27): every projectile spawned on
 	# a client — its own predicted shots included — is purely visual.

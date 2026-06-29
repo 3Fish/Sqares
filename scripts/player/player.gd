@@ -165,6 +165,7 @@ func _step(input: NetPlayerInput, delta: float, replay: bool = false) -> void:
 		_try_jump(input.move_axis)
 	if not replay:
 		_handle_shoot(input)
+		_handle_shield(input, delta)
 	move_and_slide()
 	if not replay:
 		# Shove any physics blocks (#96) this player drove into this tick.
@@ -184,6 +185,7 @@ func _sample_input() -> NetPlayerInput:
 	input.move_axis = Input.get_axis("p%d_move_left" % p, "p%d_move_right" % p)
 	input.jump = Input.is_action_just_pressed("p%d_jump" % p)
 	input.shoot = Input.is_action_pressed("p%d_shoot" % p)
+	input.shield = Input.is_action_just_pressed("p%d_shield" % p)
 	if input.shoot:
 		input.aim = _get_aim_direction()
 	return input
@@ -335,6 +337,17 @@ func _is_damage_authority() -> bool:
 # Combat helpers
 # ---------------------------------------------------------------------------
 
+## Advances the reflecting shield clocks and raises it on a fresh press (#138).
+## Runs only on a live step (gated by `_step`'s `not replay`), so a reconciliation
+## rewind never re-spends a charge or double-advances the timers; the host drives
+## a SIMULATED player's shield from the same replicated input bit and adjudicates
+## reflection authoritatively, so this stays host-consistent.
+func _handle_shield(input: NetPlayerInput, delta: float) -> void:
+	health.advance_shield(delta)
+	if input.shield and health.activate_shield():
+		SfxDirector.play(SfxDirector.SHIELD_RAISE)
+
+
 func _handle_shoot(input: NetPlayerInput) -> void:
 	if not input.shoot:
 		# Releasing the trigger abandons any delayed shot still charging (#113), and
@@ -376,6 +389,12 @@ func _get_aim_direction() -> Vector2:
 
 func take_damage(amount: float, attacker: Node = null) -> void:
 	health.take_damage(amount, attacker)
+
+
+## Whether this player's reflecting shield is currently up (#138). Read by an
+## incoming Projectile to decide whether to deflect the shot back at its owner.
+func is_shielded() -> bool:
+	return health.is_shielded()
 
 
 func heal(amount: float) -> void:
