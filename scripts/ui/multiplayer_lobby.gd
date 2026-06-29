@@ -45,6 +45,12 @@ var _waiting_label: Label
 var _mode_picker: OptionButton
 var _arena_picker: OptionButton
 var _rounds_picker: SpinBox
+# Host-only mode-specific options (#163), mirroring the local match-setup screen
+# (#133): enabled only for team-grouping modes, where friendly fire (#62) and the
+# smaller-team handicap (#147) are meaningful. Default FF on / handicap off so FFA
+# and the pre-#163 networked behaviour are unchanged.
+var _friendly_fire_toggle: CheckButton
+var _team_handicap_toggle: CheckButton
 
 # Parallel arrays: picker item index -> registered id.
 var _mode_ids: Array = []
@@ -135,11 +141,17 @@ func _on_start_pressed() -> void:
 	var mode := _current_mode_id()
 	var wins := int(_rounds_picker.value)
 	var arena := _current_arena_id()
-	var config := MatchConfig.to_dict(mode, wins, arena, true, false)
+	# Surface the host's chosen mode-specific options (#163) instead of the old
+	# hardcoded FF-on / handicap-off. For non-team modes the toggles are disabled
+	# and keep their defaults, which downstream ignores (friendly fire is moot in
+	# FFA), so FFA matches stay byte-identical to before.
+	var friendly_fire := _friendly_fire_toggle.button_pressed
+	var team_handicap := _team_handicap_toggle.button_pressed
+	var config := MatchConfig.to_dict(mode, wins, arena, friendly_fire, team_handicap)
 	NetReplicator.broadcast_start_match(config)
 	# The host's own roster size is the player count; identity stays default
 	# (colour-by-slot) for the demo, so no names/colours are staged (#149 Q4).
-	MatchConfig.configure(mode, NetworkManager.peer_count(), wins, arena, true, [], [], false)
+	MatchConfig.configure(mode, NetworkManager.peer_count(), wins, arena, friendly_fire, [], [], team_handicap)
 	get_tree().change_scene_to_file(MATCH_SCENE)
 
 
@@ -193,6 +205,37 @@ func _current_mode_id() -> String:
 func _current_arena_id() -> String:
 	return String(_arena_ids[_arena_picker.selected]) \
 		if _arena_picker != null and _arena_picker.selected >= 0 else MatchConfig.DEFAULT_ARENA
+
+
+func _on_mode_selected(_index: int) -> void:
+	_refresh_mode_options_availability()
+
+
+## The currently-selected game-mode script, or null when nothing is selected.
+func _selected_mode_script() -> GDScript:
+	if _mode_picker == null or _mode_picker.selected < 0:
+		return null
+	return GameModeRegistry.get_mode(String(_mode_ids[_mode_picker.selected]))
+
+
+## Enables the team-only option toggles (#163) only when the selected mode groups
+## players into shared teams (so friendly fire / the smaller-team handicap are
+## meaningful). Evaluated at the maximum roster so the answer is mode-level, not
+## tied to the lobby's current peer count. A disabled toggle keeps its default and
+## is ignored downstream for FFA, so the staged value is harmless either way.
+func _refresh_mode_options_availability() -> void:
+	if _friendly_fire_toggle == null or _team_handicap_toggle == null:
+		return
+	var groups := mode_groups_players(_selected_mode_script(), MatchDirector.MAX_PLAYERS)
+	var tip := "" if groups else "No mode-specific options for this game mode."
+	_friendly_fire_toggle.disabled = not groups
+	_team_handicap_toggle.disabled = not groups
+	if not groups:
+		_friendly_fire_toggle.tooltip_text = tip
+		_team_handicap_toggle.tooltip_text = tip
+	else:
+		_friendly_fire_toggle.tooltip_text = "When on, team-mates can damage each other."
+		_team_handicap_toggle.tooltip_text = "When on, a losing team draws extra cards for each player the winning team has more than it."
 
 
 # ---------------------------------------------------------------------------
@@ -282,8 +325,26 @@ func _build_lobby_panel() -> VBoxContainer:
 	_arena_picker = _add_option_row(_host_settings, "Arena", _arena_labels())
 	_rounds_picker = _add_spin_row(_host_settings, "Rounds to win",
 		MatchConfig.MIN_WINS, MatchConfig.MAX_WINS, MatchConfig.DEFAULT_WINS)
+
+	# Mode-specific options (#163), mirroring match_setup.gd's submenu but inline:
+	# Teams-only toggles, defaulting to FF on / handicap off.
+	_friendly_fire_toggle = CheckButton.new()
+	_friendly_fire_toggle.text = "Friendly fire"
+	_friendly_fire_toggle.button_pressed = true
+	_friendly_fire_toggle.tooltip_text = "When on, team-mates can damage each other."
+	_host_settings.add_child(_friendly_fire_toggle)
+
+	_team_handicap_toggle = CheckButton.new()
+	_team_handicap_toggle.text = "Smaller-team handicap"
+	_team_handicap_toggle.button_pressed = false
+	_team_handicap_toggle.tooltip_text = "When on, a losing team draws extra cards for each player the winning team has more than it."
+	_host_settings.add_child(_team_handicap_toggle)
+
 	_mode_picker.select(maxi(0, _mode_ids.find(MatchConfig.DEFAULT_MODE)))
 	_arena_picker.select(maxi(0, _arena_ids.find(MatchConfig.DEFAULT_ARENA)))
+	# Keep the team-only toggles enabled only for team-grouping modes (#163).
+	_mode_picker.item_selected.connect(_on_mode_selected)
+	_refresh_mode_options_availability()
 	panel.add_child(_host_settings)
 
 	_waiting_label = Label.new()
@@ -428,3 +489,24 @@ static func roster_text(peers: Dictionary, local_slot: int) -> String:
 ## Returns a copy of `ids`, or a copy of `fallback` when `ids` is empty.
 static func _ids_or_fallback(ids: Array, fallback: Array) -> Array:
 	return ids.duplicate() if not ids.is_empty() else fallback.duplicate()
+
+
+## True when `mode_script` assigns two or more players to a shared team at the
+## given roster size — i.e. the mode has team-mates, so team-only options such as
+## friendly fire (#62) and the smaller-team handicap (#147) are meaningful. FFA
+## gives every player their own team (false); Teams groups them (true). Generic
+## over modded modes via `assign_teams` rather than matching a mode id; a null /
+## non-`GameMode` script is treated as no teams. Mirrors the same-named gate on
+## `match_setup.gd` so the networked lobby surfaces these options identically
+## (#163). Pure so the gate is unit-tested without booting the screen.
+static func mode_groups_players(mode_script: GDScript, player_count: int) -> bool:
+	if mode_script == null:
+		return false
+	var mode: Object = mode_script.new()
+	if not (mode is GameMode):
+		return false
+	var teams: Dictionary = (mode as GameMode).assign_teams(player_count)
+	var distinct: Dictionary = {}
+	for pid: int in teams:
+		distinct[teams[pid]] = true
+	return distinct.size() < teams.size()
