@@ -9,6 +9,9 @@ extends TestCase
 
 const Lobby := preload("res://scripts/ui/multiplayer_lobby.gd")
 const MatchDirectorScript := preload("res://scripts/match/match_director.gd")
+const FFAMode := preload("res://scripts/modes/game_mode.gd")
+const TeamsModeScript := preload("res://scripts/modes/teams_mode.gd")
+const NonMode := preload("res://scripts/effects/effect.gd")
 
 
 # ---------------------------------------------------------------------------
@@ -129,3 +132,33 @@ func _test_all_peers_ready_extra_acks_are_harmless() -> void:
 	# An ack from a peer no longer in the roster doesn't block the start.
 	assert_true(MatchDirectorScript.all_peers_ready([7, 9, 99], [1, 7, 9], 1),
 		"a stale extra ack still satisfies the gate")
+
+
+# ---------------------------------------------------------------------------
+# mode_groups_players (#163): gates the host-only friendly-fire / handicap
+# toggles to team-grouping modes, mirroring the same gate on match_setup.gd.
+# ---------------------------------------------------------------------------
+
+func _test_mode_groups_players_ffa_never_groups() -> void:
+	# FFA assigns every player their own team -> no team-mates at any roster, so
+	# the team-only option toggles stay disabled in the lobby.
+	assert_false(Lobby.mode_groups_players(FFAMode, 4), "FFA never groups players (4p)")
+	assert_false(Lobby.mode_groups_players(FFAMode, 2), "FFA never groups players (2p)")
+
+
+func _test_mode_groups_players_teams_groups_at_full_roster() -> void:
+	# Teams (2 teams, round-robin) shares teams once there are more players than
+	# teams. The lobby evaluates at MAX_PLAYERS, so the toggles enable for Teams.
+	assert_true(Lobby.mode_groups_players(TeamsModeScript, 4), "4p Teams -> 2v2 (grouped)")
+	assert_true(Lobby.mode_groups_players(TeamsModeScript, 3), "3p Teams -> 2v1 (grouped)")
+
+
+func _test_mode_groups_players_teams_not_grouped_at_two_players() -> void:
+	# A 2-player Teams match is 1v1: each player is alone on their team. The gate
+	# reports the roster-accurate answer (the lobby evaluates at MAX_PLAYERS).
+	assert_false(Lobby.mode_groups_players(TeamsModeScript, 2), "2p Teams -> 1v1 (no team-mates)")
+
+
+func _test_mode_groups_players_null_and_non_mode_do_not_group() -> void:
+	assert_false(Lobby.mode_groups_players(null, 4), "null script -> no teams")
+	assert_false(Lobby.mode_groups_players(NonMode, 4), "non-GameMode script -> no teams")
