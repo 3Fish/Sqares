@@ -226,6 +226,10 @@ func _client_receive_snapshot(data: Dictionary) -> void:
 			# Ammo, like health, is adopted outright (host-authoritative, #117) so
 			# the ammo HUD reads true for remote players too.
 			state.apply_ammo_to(player)
+			# The reflecting-shield up/down state is host-authoritative too (#158):
+			# a puppet never ticks its own shield clock, so adopt the host's flag so
+			# a shield visual reads true for remote players.
+			state.apply_shield_to(player)
 			player.interpolation.push(net_time_seconds(), state.position, state.velocity)
 
 
