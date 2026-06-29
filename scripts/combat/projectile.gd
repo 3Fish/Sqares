@@ -123,6 +123,16 @@ func _physics_process(delta: float) -> void:
 			velocity = reflect_velocity(velocity)
 			shooter = collider
 			SfxDirector.play(SfxDirector.SHIELD_REFLECT)
+			# Reflection mutates this shot in place rather than spawning a new one, so
+			# the spawn-time broadcast never announced the bounce-back — a pure client
+			# would see its bullet vanish at the shield. Re-broadcast the reversed
+			# trajectory under the same net_id, now owned by the deflector, so clients
+			# spawn the visual bullet flying back instead (#158). Reuses the spawn
+			# broadcast path and no-ops off the host / in local play; hits stay
+			# host-authoritative. `shield_penetration` is never put on the wire, so only
+			# the host can tell a reflection (vs a penetrating hit) actually happened —
+			# hence a host re-broadcast rather than client-side prediction.
+			NetReplicator.broadcast_projectile(self, combatant_id(collider))
 			return
 		if not _may_damage(collider):
 			# Friendly fire is off and this is a teammate (or the shooter itself

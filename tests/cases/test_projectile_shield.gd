@@ -98,3 +98,24 @@ func _test_apply_player_damage_routes_negative_to_heal() -> void:
 	assert_almost_eq(t.healed, 15.0, "a negative penetrating hit (p<0) heals through the shield")
 	assert_almost_eq(t.taken, -1.0, "no damage path for a healing hit")
 	t.free()
+
+
+# ---------------------------------------------------------------------------
+# Online reflection re-broadcast contract (#158, item 2)
+# ---------------------------------------------------------------------------
+
+func _test_reflection_rebroadcast_payload_is_the_bounce_back() -> void:
+	# Reflection mutates the shot in place (reverse velocity, hand it to the
+	# deflector) and the host re-broadcasts it under the SAME net_id so clients show
+	# the bounce-back instead of the bullet vanishing at the shield. The live call
+	# site needs a real collision (boot/integration-verified, like the rest of the
+	# reflection path), but the wire contract it sends is pure and asserted here:
+	# build the payload exactly as the reflect branch does and check it carries the
+	# reversed trajectory, the deflector as owner, and the unchanged shot id.
+	proj.net_id = "7_2"
+	proj.velocity = ProjectileScript.reflect_velocity(Vector2(300.0, -120.0))
+	var deflector_slot := 3
+	var payload := ProjectileScript.projectile_payload(proj, deflector_slot)
+	assert_eq(payload["net_id"], "7_2", "the re-broadcast keeps the same shot id")
+	assert_eq(payload["player_id"], 3, "the reflected shot is re-owned by the deflector")
+	assert_eq(payload["velocity"], [-300.0, 120.0], "the wire carries the reversed (bounce-back) velocity")
