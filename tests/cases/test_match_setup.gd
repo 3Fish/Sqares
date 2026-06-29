@@ -78,3 +78,50 @@ func _test_teams_preview_resolves_short_array_per_slot() -> void:
 	# the first four slots), matching the spawn-path resolution.
 	var text := MatchSetup.teams_preview_text([], 2)
 	assert_true(text.contains("2 team(s)"), "empty colours -> per-slot default (distinct) teams: %s" % text)
+
+
+# ---------------------------------------------------------------------------
+# Degenerate-teams warning (#145): fewer than 2 distinct colours -> warn
+# ---------------------------------------------------------------------------
+
+func _test_teams_warning_fires_for_one_team() -> void:
+	# Every active player on the same colour -> a single team -> warn (the
+	# maintainer's "allow but warn" decision).
+	assert_eq(MatchSetup.teams_warning_text([4, 4], 2),
+		"⚠ 1 team — pick at least two colours for a Teams match.",
+		"two players sharing a colour -> degenerate-team warning")
+	assert_eq(MatchSetup.teams_warning_text([0, 0, 0, 0], 4),
+		"⚠ 1 team — pick at least two colours for a Teams match.",
+		"four players on one colour -> warning")
+
+
+func _test_teams_warning_silent_when_two_or_more_teams() -> void:
+	assert_eq(MatchSetup.teams_warning_text([0, 1], 2), "",
+		"two distinct colours -> no warning")
+	assert_eq(MatchSetup.teams_warning_text([0, 1, 0, 1], 4), "",
+		"two colours across four players (2v2) -> no warning")
+	assert_eq(MatchSetup.teams_warning_text([0, 1, 2], 3), "",
+		"three distinct colours -> no warning")
+
+
+func _test_teams_warning_applies_at_two_players() -> void:
+	# Q2: the guard applies at all N >= 2, so a 2-player same-colour match warns
+	# while a 2-player distinct-colour (1v1) match does not.
+	assert_true(MatchSetup.teams_warning_text([3, 3], 2) != "",
+		"2-player same-colour Teams match warns (guard active at N=2)")
+	assert_eq(MatchSetup.teams_warning_text([2, 5], 2), "",
+		"2-player distinct-colour 1v1 is valid -> no warning")
+
+
+func _test_teams_warning_default_colours_are_distinct() -> void:
+	# An empty colours array resolves to the per-slot default palette (distinct
+	# for the first slots), so the default unconfigured Teams match never warns.
+	assert_eq(MatchSetup.teams_warning_text([], 4), "",
+		"per-slot default colours are distinct -> no warning")
+
+
+func _test_teams_warning_silent_below_min_players() -> void:
+	# Below a real match roster there is nothing to warn about; the guard only
+	# applies at N >= MIN_PLAYERS.
+	assert_eq(MatchSetup.teams_warning_text([0], 1), "",
+		"a single player is not a Teams match -> no warning")

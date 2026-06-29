@@ -393,7 +393,14 @@ func _refresh_teams_preview() -> void:
 	var colors: Array = []
 	for i in count:
 		colors.append(_color_pickers[i].selected)
-	_teams_preview.text = teams_preview_text(colors, count)
+	var text := teams_preview_text(colors, count)
+	# #145: a Teams match with fewer than 2 distinct colours is a degenerate
+	# single-team game — keep Start enabled (the maintainer's "allow but warn"
+	# call) but surface a non-blocking notice beneath the breakdown.
+	var warning := teams_warning_text(colors, count)
+	if warning != "":
+		text += "\n" + warning
+	_teams_preview.text = text
 
 
 ## A one-line summary of how `colors` group `player_count` players into teams (#134):
@@ -416,6 +423,22 @@ static func teams_preview_text(colors: Array, player_count: int) -> String:
 			who.append("P%d" % (slot + 1))
 		parts.append("%s (%s)" % [PlayerPalette.name_at(ci), ", ".join(who)])
 	return "Teams from colour — %d team(s): %s" % [groups.size(), "  ".join(parts)]
+
+
+## Non-blocking warning for a degenerate Teams configuration (#145). A Teams match
+## derives its teams from the chosen colours, so its team count is the number of
+## *distinct* colours among the active players, with an intended range of 2..N
+## (#134). When fewer than 2 distinct colours are chosen the match collapses to a
+## single team — a pointless Teams game — so the setup preview warns the host
+## (the maintainer's decision: *allow but warn*, at every roster N >= 2) rather
+## than blocking Start or silently overriding the colour choice. Returns "" when
+## the configuration is fine. Pure so the rule is unit-tested without the screen.
+static func teams_warning_text(colors: Array, player_count: int) -> String:
+	if player_count < MatchDirector.MIN_PLAYERS:
+		return ""
+	if MatchConfig.distinct_team_count(colors, player_count) < 2:
+		return "⚠ 1 team — pick at least two colours for a Teams match."
+	return ""
 
 
 # ---------------------------------------------------------------------------
