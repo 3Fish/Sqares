@@ -2,6 +2,7 @@ extends Control
 
 func _ready() -> void:
 	$VBox/PlayButton.pressed.connect(_on_play_pressed)
+	$VBox/MultiplayerButton.pressed.connect(_on_multiplayer_pressed)
 	$VBox/SettingsButton.pressed.connect(_on_settings_pressed)
 	$VBox/ArenaEditorButton.pressed.connect(_on_arena_editor_pressed)
 	$VBox/QuitButton.pressed.connect(_on_quit_pressed)
@@ -16,6 +17,10 @@ func _ready() -> void:
 
 func _on_play_pressed() -> void:
 	get_tree().change_scene_to_file("res://scenes/ui/match_setup.tscn")
+
+
+func _on_multiplayer_pressed() -> void:
+	get_tree().change_scene_to_file("res://scenes/ui/multiplayer_lobby.tscn")
 
 
 func _on_settings_pressed() -> void:

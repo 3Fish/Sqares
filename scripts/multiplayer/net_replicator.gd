@@ -49,6 +49,18 @@ signal match_event(kind: String, data: Dictionary)
 ## broadcast and records it.
 signal card_pick_received(slot: int, card_id: String)
 
+## Reliable host→clients "load the match" signal (#149): the host, on pressing
+## Start in the lobby, broadcasts the chosen match config; each client adopts it
+## into `MatchConfig` and loads `scenes/match.tscn`. Routed through the lobby UI
+## rather than `MatchDirector` because clients are still on the lobby screen when
+## it fires.
+signal match_starting(config: Dictionary)
+
+## Reliable client→host "I'm in the match scene" ack (#149). The host holds the
+## first `round_start` until every client has reported in (or a grace lapses), so
+## a client that loads `match.tscn` a frame late never misses round 1's spawn.
+signal client_scene_ready(peer_id: int)
+
 ## Host physics tick counter driving the snapshot cadence.
 var _tick: int = 0
 ## Live player nodes in the current round: player_id -> Player.
@@ -72,6 +84,10 @@ var _client_pending: Array = []
 var _projectile_counter: int = 0
 ## Newest snapshot applied on this client (stale packets are dropped by tick).
 var latest_snapshot: NetSnapshot = null
+## Host: peer ids that have acked entering the match scene (#149), buffered so an
+## ack arriving before the host's MatchDirector subscribes isn't lost. Reset each
+## time the host broadcasts a fresh match start.
+var scene_ready_peers: Dictionary = {}
 
 
 func _ready() -> void:
@@ -140,6 +156,7 @@ func reset() -> void:
 	_tick = 0
 	_projectile_counter = 0
 	latest_snapshot = null
+	scene_ready_peers.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -502,6 +519,42 @@ func broadcast_match_event(kind: String, data: Dictionary = {}) -> void:
 @rpc("authority", "call_remote", "reliable")
 func _client_receive_match_event(kind: String, data: Dictionary) -> void:
 	match_event.emit(kind, data)
+
+
+# ---------------------------------------------------------------------------
+# Match start handshake (#149): lobby Start -> all peers in match.tscn
+# ---------------------------------------------------------------------------
+
+## Host→clients: tell every client to adopt `config` and load the match scene.
+## Resets the scene-ready acks so this match starts counting from zero. No-op off
+## the host.
+func broadcast_start_match(config: Dictionary) -> void:
+	if not NetworkManager.is_host():
+		return
+	scene_ready_peers.clear()
+	_client_start_match.rpc(config)
+
+
+@rpc("authority", "call_remote", "reliable")
+func _client_start_match(config: Dictionary) -> void:
+	match_starting.emit(config)
+
+
+## Client→host: report that this peer has entered the match scene and is now
+## listening for match events (#149). No-op off a client.
+func notify_scene_ready() -> void:
+	if not NetworkManager.is_client():
+		return
+	_host_receive_scene_ready.rpc_id(NetworkManager.HOST_PEER_ID)
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func _host_receive_scene_ready() -> void:
+	if not NetworkManager.is_host():
+		return
+	var sender := multiplayer.get_remote_sender_id()
+	scene_ready_peers[sender] = true
+	client_scene_ready.emit(sender)
 
 
 ## Client→host: replicates this peer's between-rounds card pick (#82). `card_id`
