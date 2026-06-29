@@ -8,12 +8,13 @@
 
 # Backlog & dependency overview
 
-last-synced: 2026-06-28T21:45:00Z
+last-synced: 2026-06-29T01:47:34Z
 
-48 issues are open. The maintainer leaves an issue **open after its PR merges**,
-so "open" does not mean "unimplemented" — most open issues are already shipped in
-`main` and are kept around as a record. This cache classifies each against
-`main`'s merge history so issue selection doesn't re-derive it every run.
+20 issues are open. Since the previous sync the maintainer **closed the whole
+"shipped but still open" set** (the record-keeping issues whose PRs had already
+merged) and **#138 merged** (reflecting shield, PR #159), so the backlog is now
+much smaller and almost every remaining open issue is genuine forward work,
+an epic/tracker, or blocked on a decision.
 
 ## Legend
 
@@ -30,25 +31,26 @@ so "open" does not mean "unimplemented" — most open issues are already shipped
 
 | # | Title | Effort | State | Depends on / notes |
 |---|---|---|---|---|
-| 138 | Shield reflection + penetration model | M | **in-flight** (PR #159) | Fully decided; picked up this run. |
-| 151 | Mid-match disconnect/reconnect + slot-hold | L | **in-flight** (PR #153) | Host-authoritative reconnect; under review (change requested: client reclaim never triggered). |
-| 152 | Host migration (re-elect + state transfer) | L | **question** | Blocked on maintainer (re-election rule, etc.); builds on #151. |
-| 158 | Online replication of the reflecting shield | M | open (Deferred) | Additive netcode/visual parity for #138; no open question. Rides with #27/#28/#112. |
-| 112 | Friendly-fire follow-ups (card override, per-mode rules, online repl.) | M | open (Deferred) | Mixed: some additive, some netcode-dependent (#27). Built on #62/#26 (shipped). |
-| 149 | Multiplayer Demo (lobby + invite + FFA/teams play) | L | open | Broad/under-specified (invite UX, lobby screen). Likely needs decomposition/clarification before implementation. Leans on the netcode stack (#27 shipped, #151 in-flight). |
-| 147 | Toggleable card-draw handicap for smaller teams (A4) | S–M | **open, has open question** | 2-team rule decided; **>2-team rule undecided**. Needs `question` before it can be built. Built on #62/#134 (shipped). |
-| 145 | Teams mode with <2 distinct colours (degenerate count) | S | **open, has open question** | What *should* happen (disallow / warn / fallback) is an undecided UX call. From #134 (shipped). |
-| 85 | Combinable platform flags (Physics, Destructible) + Chain/Rope | L | open (architectural) | Its individual flags shipped (#96/#97/#98); the "combination" parent is a multi-PR/architectural call. |
+| 151 | Mid-match disconnect/reconnect + slot-hold | L | **in-flight** (PR #153) | Host-authoritative reconnect. Review's required client-reclaim wiring landed; CI smoke test fixed this run — awaiting a fresh review on the new head. |
+| 158 | Online replication of the reflecting shield | M | **in-flight** (PR this run) | Additive netcode/visual parity for #138 (now shipped). Item 1 (shield-up snapshot flag) picked up this run; items 2–3 (reflected-bullet re-broadcast, own-shield prediction) remain on the issue. Unblocked. |
+| 152 | Host migration (re-elect + state transfer) | L | **question** | Blocked on maintainer (re-election rule, departed-host slot, migration pause, RNG-stream position, hard-fail fallback). Builds on #151. |
+| 112 | Friendly-fire follow-ups (card override, per-mode rules, online repl.) | M | **open, has open question** | Mixed: card-effect FF override has an undecided API (granularity/direction/stacking, coupled to #68); online-repl. item rides #27. Built on #62/#26 (shipped). |
+| 149 | Multiplayer Demo (lobby + invite + FFA/teams play) | L | **open** | Broad/under-specified (invite UX, lobby/host-join screen). Needs decomposition/clarification before implementation. Leans on the netcode stack (#27 shipped, #151 in-flight). |
+| 147 | Toggleable card-draw handicap for smaller teams (A4) | S–M | **open, has open question** | 2-team rule decided; **>2-team formula undecided** (Q1), plus per-loser scope (Q2) and per-mode vs match-toggle (Q3). Built on #62/#134 (shipped). Stale branch `claude/issue-147-team-card-handicap` exists (no open PR). |
+| 145 | Teams mode with <2 distinct colours (degenerate count) | S | **open, has open question** | What *should* happen (block / warn / fallback / nothing) is an undecided UX call. From #134 (shipped). |
+| 85 | Combinable platform flags (Physics, Destructible) + Chain/Rope | L | **open (architectural)** | Its individual flags shipped (#96/#97/#98); the "combination" parent is a multi-PR/architectural call. |
 
 ## Epics (umbrella trackers — never a single PR)
 
+All listed sub-issues are now closed/shipped except the netcode reconnect split.
+
 | # | Title | Sub-issues |
 |---|---|---|
-| 11 | Card draw & pick system | #16, #17, #18 |
-| 12 | Stats & per-card effect engine | #19, #20, #21, #22 |
-| 13 | Multiplayer: local + online netcode | #23–#28 (resilience #28 shipped; reconnect split to #151/#152) |
-| 14 | Audio: sound & music system | #29, #30, #31 |
-| 15 | In-game visual arena editor | #32–#36 |
+| 11 | Card draw & pick system | #16, #17, #18 (all shipped) |
+| 12 | Stats & per-card effect engine | #19, #20, #21, #22 (all shipped) |
+| 13 | Multiplayer: local + online netcode | #23–#28 shipped; reconnect split to #151 (in-flight) / #152 (`question`) |
+| 14 | Audio: sound & music system | #29, #30, #31 (shipped; assets still needed — see trackers #47/#56) |
+| 15 | In-game visual arena editor | #32–#36 (all shipped) |
 
 ## Deferred-question trackers (open; concrete items mostly shipped)
 
@@ -58,29 +60,28 @@ needs a maintainer decision rather than implementation.
 
 | # | From | Residual |
 |---|---|---|
-| 44 | #32 (arena data format) | serialisation/validation notes; validation went to #36 |
-| 45 | #16 (card model) | rarity/effect-ref notes; superseded by #18/#20 |
+| 44 | #32 (arena data format) | serialisation/validation notes; validation went to #36 (shipped) |
+| 45 | #16 (card model) | rarity/effect-ref notes; superseded by #18/#20 (shipped) |
 | 47 | #29 (audio foundation) | needs audio assets; options-scope notes |
 | 48 | #25 (local players) | match-setup UI routed to #26 (shipped) |
 | 49 | #21 (homing/knockback) | tuning notes; team-filtering went to #62 (shipped) |
 | 56 | #31 (music crossfade) | needs music assets; mapping/tuning notes |
 | 66 | #23 (netcode foundation) | live combat repl. → #27 (shipped); seed transport done |
 
-## Shipped but still open (not actionable — candidates for the maintainer to close)
+## Shipped but still open (not actionable)
 
-#17, #26, #27, #43, #52, #62, #68, #79, #82, #83, #84, #94, #96, #97, #98, #104,
-#113, #116, #117, #121, #123, #125, #128, #132, #133, #134, #135, #140 — each has
-a corresponding merged PR in `main`'s history.
+None — the maintainer closed the prior shipped-but-open set this cycle.
 
 ## Dependency notes
 
 - **Netcode spine:** #13 → #23/#24/#25/#26/#27/#28 (all shipped) → reconnect
   **#151** (in-flight) → host migration **#152** (`question`). The Multiplayer
-  Demo **#149** and online-replication follow-ups (**#158**, #112's online item)
-  sit on top of this spine.
-- **Combat/shield:** **#138** (in-flight) is self-contained on the
-  `Health`↔`Projectile` seam; **#158** is its online-replication follow-up.
+  Demo **#149** and the online-replication follow-ups (**#158**, #112's online
+  item) sit on top of this spine.
+- **Combat/shield:** **#138** shipped; **#158** is its online-replication
+  follow-up (host-authoritative outcomes already correct online; this is
+  client-side visual parity), self-contained on the snapshot/`Health` seam.
 - **Teams:** #26/#62/#134 (shipped) underpin the open team follow-ups **#147**,
-  **#145**, and **#112** — two of which still carry open design questions.
+  **#145**, and **#112** — all three still carry open design questions.
 - **Platform flags:** #85's children #96/#97/#98 shipped; the combinable parent
   remains an architectural item.
