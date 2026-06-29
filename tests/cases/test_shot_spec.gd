@@ -65,3 +65,27 @@ func _test_multi_bullet_spec_fires() -> void:
 	spec.bullet_count = 3
 	assert_true(spec.fires(), "a multi-bullet spec fires")
 	assert_eq(spec.bullet_count, 3, "the requested count is retained")
+
+
+func _test_friendly_fire_defaults_to_full() -> void:
+	# A bare spec deals full friendly damage (#112): Weapon overrides this to 0.0
+	# when the match FF toggle is off, but the data-structure default is 1.0 so a
+	# hand-built spec (or a test) is not accidentally a pass-through shot.
+	var spec := ShotSpec.new()
+	assert_almost_eq(spec.friendly_fire, 1.0, "friendly_fire defaults to 1.0 (full)")
+
+
+func _test_friendly_fire_carried_through_constructor() -> void:
+	# friendly_fire is the 12th positional param, after shield_penetration (#112).
+	var spec := ShotSpec.new(25.0, 800.0, 1.0, 0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.5, 0.0, 0.5)
+	assert_almost_eq(spec.friendly_fire, 0.5, "friendly_fire carried from the constructor")
+
+
+func _test_effects_can_reshape_friendly_fire() -> void:
+	# Pre-shoot effects reshape friendly_fire in pickup order like every other shot
+	# attribute (#112). The maintainer's worked example: seeded 1.0 (FF on), a
+	# "-0.1" effect then a "x1.1" effect → (1 - 0.1) * 1.1 == 0.99.
+	var spec := ShotSpec.new()
+	spec.friendly_fire = spec.friendly_fire - 0.1
+	spec.friendly_fire = spec.friendly_fire * 1.1
+	assert_almost_eq(spec.friendly_fire, 0.99, "friendly_fire stacks through the chain in order")
