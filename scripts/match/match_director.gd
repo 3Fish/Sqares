@@ -13,6 +13,10 @@ const MAX_PLAYERS := 4
 ## Horizontal gap used to fan players out when an arena ships fewer spawn
 ## points than players, so nobody stacks on top of another at the origin.
 const FALLBACK_SPACING := 80.0
+## Longest a networked host waits for every client to ack entering the match
+## scene before starting round 1 anyway (#149). A silent peer can't stall the
+## match past this; the rest still play (best-effort disconnect handling, Q5).
+const NET_START_GRACE := 8.0
 
 ## One-shot arena hand-off for the editor's playtest (#36). When the arena editor
 ## launches a playtest it registers the edited arena and sets this; the next
@@ -55,6 +59,9 @@ var _alive_ids: Array[int] = []
 var _match_over: bool = false
 var _round_ending: bool = false
 var _mode: GameMode = null
+## Guards the networked round-1 start so it fires exactly once whether the last
+## client's scene-ready ack or the grace timer trips it first (#149).
+var _net_round_started: bool = false
 ## True when this match's teams were extrapolated from the per-player colours (#134,
 ## local Teams play). Drives the colour-named round/match announcement. Set every
 ## time the team assignment is (re)built in `_begin_match`.
@@ -98,7 +105,12 @@ func _ready() -> void:
 		player_count = NetworkManager.peer_count()
 	player_count = clamp_player_count(player_count)
 	_begin_match()
-	_start_round.call_deferred()
+	if NetworkManager.is_host() and NetworkManager.peer_count() > 1:
+		# Online with clients (#149): hold round 1 until every client is in the
+		# match scene and listening, so none misses the first round_start.
+		_await_clients_then_start()
+	else:
+		_start_round.call_deferred()
 
 
 ## Builds the team assignment from the active mode and hands it to GameManager.
@@ -417,6 +429,45 @@ func _client_setup() -> void:
 	player_count = clamp_player_count(NetworkManager.peer_count())
 	_begin_match()
 	NetReplicator.match_event.connect(_on_match_event)
+	# Tell the host we're in the match scene and listening, so it can release the
+	# first round_start once every client is ready (#149).
+	NetReplicator.notify_scene_ready()
+
+
+# ---------------------------------------------------------------------------
+# Networked match start gate (#149) — host-side
+# ---------------------------------------------------------------------------
+
+## Host-side: wait until every connected client has acked entering the match
+## scene, then start round 1. Seeds the check from NetReplicator's buffered acks
+## (an ack can land before this subscribes) and arms a grace timer so one silent
+## peer can't stall the match indefinitely (best-effort, #149 Q5).
+func _await_clients_then_start() -> void:
+	if not NetReplicator.client_scene_ready.is_connected(_on_client_scene_ready):
+		NetReplicator.client_scene_ready.connect(_on_client_scene_ready)
+	get_tree().create_timer(NET_START_GRACE).timeout.connect(_begin_networked_rounds)
+	_check_all_clients_ready()
+
+
+func _on_client_scene_ready(_peer_id: int) -> void:
+	_check_all_clients_ready()
+
+
+func _check_all_clients_ready() -> void:
+	if all_peers_ready(NetReplicator.scene_ready_peers.keys(),
+			NetworkManager.peers.keys(), NetworkManager.HOST_PEER_ID):
+		_begin_networked_rounds()
+
+
+## Starts round 1 of a networked match exactly once, whether triggered by the last
+## client's ack or by the grace timer.
+func _begin_networked_rounds() -> void:
+	if _net_round_started:
+		return
+	_net_round_started = true
+	if NetReplicator.client_scene_ready.is_connected(_on_client_scene_ready):
+		NetReplicator.client_scene_ready.disconnect(_on_client_scene_ready)
+	_start_round()
 
 
 func _on_match_event(kind: String, data: Dictionary) -> void:
@@ -543,6 +594,19 @@ func _cards_from_ids(ids) -> Array:
 ## Clamps a requested player count into the supported local-play range.
 static func clamp_player_count(count: int) -> int:
 	return clampi(count, MIN_PLAYERS, MAX_PLAYERS)
+
+
+## Whether every connected peer except the host has acked entering the match scene
+## (#149). `ready_ids` are the peers that reported in; `roster_ids` is the full
+## lobby (peer ids); the host (`host_id`) drives the round and never needs to ack.
+## Pure so the start gate is unit-tested without a live session.
+static func all_peers_ready(ready_ids: Array, roster_ids: Array, host_id: int) -> bool:
+	for pid in roster_ids:
+		if int(pid) == host_id:
+			continue
+		if not ready_ids.has(int(pid)):
+			return false
+	return true
 
 
 ## Resolves the arena id a fresh match should use: the one-shot `pending` id
