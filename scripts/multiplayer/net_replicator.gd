@@ -80,6 +80,13 @@ func _ready() -> void:
 	# on this issue).
 	if not NetworkManager.lobby_changed.is_connected(_on_lobby_changed):
 		NetworkManager.lobby_changed.connect(_on_lobby_changed)
+	# A (re)connecting client tries to reclaim its held slot the moment it is back
+	# on the host (#151). `client_connected` fires on every connect — first join
+	# and reconnect alike — and `request_slot_reclaim` no-ops unless a cached
+	# reconnect token is present, so only a genuine mid-match return sends the
+	# reclaim handshake.
+	if not NetworkManager.client_connected.is_connected(_on_client_connected):
+		NetworkManager.client_connected.connect(_on_client_connected)
 
 
 func _physics_process(delta: float) -> void:
@@ -534,6 +541,40 @@ func broadcast_roster() -> void:
 @rpc("authority", "call_remote", "reliable")
 func _client_receive_roster(roster: Dictionary) -> void:
 	NetworkManager.adopt_roster(roster)
+
+
+# ---------------------------------------------------------------------------
+# Mid-match slot reclaim (#151): a reconnecting client presents the reconnect
+# token it cached from the roster mirror; the host rebinds it to its held slot.
+# ---------------------------------------------------------------------------
+
+## Fires on every client connect (`NetworkManager.client_connected`). On a first
+## join the cached token is empty so this no-ops; on a mid-match reconnect the
+## token survived the silent drop (only an explicit `disconnect_game()` clears it),
+## so the reclaim handshake goes out and the host rebinds this peer to its held
+## slot (#151).
+func _on_client_connected() -> void:
+	request_slot_reclaim()
+
+
+## Client → host: ask to reclaim the slot held for this peer, identifying it by
+## the cached reconnect token. Called once the client has reconnected to the host.
+func request_slot_reclaim() -> void:
+	if not NetworkManager.is_client() or NetworkManager.local_reconnect_token == "":
+		return
+	_host_reclaim_slot.rpc_id(NetworkManager.HOST_PEER_ID, NetworkManager.local_reconnect_token)
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func _host_reclaim_slot(token: String) -> void:
+	if not NetworkManager.is_host():
+		return
+	# The token is the credential: it only matches a slot held for a peer that
+	# genuinely dropped, so the sender reclaims exactly that slot (or, if the
+	# token is unknown/already reclaimed, is registered fresh). The roster mirror
+	# then propagates the restored slot back to every peer.
+	NetworkManager.register_peer(multiplayer.get_remote_sender_id(), String(token))
+	broadcast_roster()
 
 
 ## Broadcasts the match RNG seed so every peer's RNGService derives identical

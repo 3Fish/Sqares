@@ -240,3 +240,37 @@ func _test_drop_client_pending_unknown_id_keeps_all() -> void:
 	rep._client_pending = [_make_pending("a", 0.2)]
 	rep._drop_client_pending("missing")
 	assert_eq(rep._client_pending.size(), 1, "an id with no pending entry leaves the queue intact")
+
+
+# --- mid-match reclaim wiring (#151) ---------------------------------------
+
+func _test_client_connected_is_wired_to_slot_reclaim() -> void:
+	# The reconnect handshake hangs off NetworkManager.client_connected: a
+	# NetReplicator subscribes in _ready, so every client (re)connect runs
+	# request_slot_reclaim (#151). Without this wire the reclaim RPC has no caller
+	# and a reconnecting peer is never restored to its held slot.
+	#
+	# The headless --script runner does all its work inside _initialize() and then
+	# quit()s without ever pumping a frame, so it never invokes _ready() — neither
+	# for the autoload nor for a node added at runtime (which is why every other
+	# case here drives nodes by calling their methods directly rather than relying
+	# on lifecycle callbacks). We therefore invoke _ready() explicitly to exercise
+	# the real wiring deterministically; the in-body `is_connected` guard keeps the
+	# call idempotent if a future harness ever does fire it.
+	var node = NetReplicatorScript.new()
+	node._ready()
+	assert_true(
+		NetworkManager.client_connected.is_connected(node._on_client_connected),
+		"NetReplicator listens for client_connected to trigger slot reclaim",
+	)
+	node.free()
+
+
+func _test_request_slot_reclaim_noops_off_a_client() -> void:
+	# request_slot_reclaim guards on is_client() and a non-empty cached token, so
+	# the client_connected handler is a safe no-op on a first join (empty token)
+	# and on the host / offline — it only sends the handshake on a genuine mid-match
+	# return. The test environment is OFFLINE, so invoking the handler must neither
+	# error nor attempt an RPC.
+	assert_false(NetworkManager.is_client(), "test environment is offline, not a client")
+	rep._on_client_connected()  # reaches request_slot_reclaim, which returns early
