@@ -8,13 +8,14 @@
 
 # Backlog & dependency overview
 
-last-synced: 2026-06-29T01:47:34Z
+last-synced: 2026-06-29T07:35:30Z
 
-20 issues are open. Since the previous sync the maintainer **closed the whole
-"shipped but still open" set** (the record-keeping issues whose PRs had already
-merged) and **#138 merged** (reflecting shield, PR #159), so the backlog is now
-much smaller and almost every remaining open issue is genuine forward work,
-an epic/tracker, or blocked on a decision.
+20 issues are open. Since the previous sync: **PR #153 merged** (the #151
+reconnect / slot-hold half), **#158 items 1 & 2 merged** (remote shield-up
+replication + reflected-bullet re-broadcast), and the maintainer **answered #149**
+(Multiplayer Demo) with an MVP scope and removed its `question` label — so #149 is
+now decided forward work and is **in-flight this run**. The remaining open issues
+are mostly epics/trackers or carry an open design decision.
 
 ## Legend
 
@@ -31,14 +32,13 @@ an epic/tracker, or blocked on a decision.
 
 | # | Title | Effort | State | Depends on / notes |
 |---|---|---|---|---|
-| 151 | Mid-match disconnect/reconnect + slot-hold | L | **in-flight** (PR #153) | Host-authoritative reconnect. Review's required client-reclaim wiring landed; CI smoke test fixed this run — awaiting a fresh review on the new head. |
-| 158 | Online replication of the reflecting shield | M | **in-flight** (PR this run) | Additive netcode/visual parity for #138 (now shipped). Item 1 (shield-up snapshot flag) picked up this run; items 2–3 (reflected-bullet re-broadcast, own-shield prediction) remain on the issue. Unblocked. |
-| 152 | Host migration (re-elect + state transfer) | L | **question** | Blocked on maintainer (re-election rule, departed-host slot, migration pause, RNG-stream position, hard-fail fallback). Builds on #151. |
-| 112 | Friendly-fire follow-ups (card override, per-mode rules, online repl.) | M | **open, has open question** | Mixed: card-effect FF override has an undecided API (granularity/direction/stacking, coupled to #68); online-repl. item rides #27. Built on #62/#26 (shipped). |
-| 149 | Multiplayer Demo (lobby + invite + FFA/teams play) | L | **open** | Broad/under-specified (invite UX, lobby/host-join screen). Needs decomposition/clarification before implementation. Leans on the netcode stack (#27 shipped, #151 in-flight). |
-| 147 | Toggleable card-draw handicap for smaller teams (A4) | S–M | **open, has open question** | 2-team rule decided; **>2-team formula undecided** (Q1), plus per-loser scope (Q2) and per-mode vs match-toggle (Q3). Built on #62/#134 (shipped). Stale branch `claude/issue-147-team-card-handicap` exists (no open PR). |
-| 145 | Teams mode with <2 distinct colours (degenerate count) | S | **open, has open question** | What *should* happen (block / warn / fallback / nothing) is an undecided UX call. From #134 (shipped). |
-| 85 | Combinable platform flags (Physics, Destructible) + Chain/Rope | L | **open (architectural)** | Its individual flags shipped (#96/#97/#98); the "combination" parent is a multi-PR/architectural call. |
+| 149 | Multiplayer Demo (lobby + host/join + FFA/teams play) | L | **in-flight** (PR this run) | **Decided** — maintainer's MVP answer (Q1 direct IP:port, Q2 main-menu Multiplayer + lobby roster + host-only Start, Q3 host-only setup, Q4 automatic team assignment, Q5 best-effort disconnect) resolved all open questions; `question` label removed. `match.tscn` already supports networked roles (#27); this adds the front-end flow. Unblocked (netcode #27 shipped, #151 reconnect merged). |
+| 158 | Online replication of the reflecting shield | S | **open** (items 1–2 shipped) | Items 1 (remote shield-up snapshot, #161) and 2 (reflected-bullet re-broadcast, #162) merged. Only **item 3** remains — client-side *prediction* of one's own shield raise, **explicitly optional polish**. The PREDICTED local player already runs `_step`/`_handle_shield`, so its own shield already shows; the residual (host correction of a mispredicted shield) carries a flicker/charge-on-wire design nuance and is not headlessly testable. Tracker only. |
+| 152 | Host migration (re-elect + state transfer) | L | **question** | Blocked on maintainer (re-election rule, departed-host slot, migration pause, RNG-stream position, hard-fail fallback). Builds on #151 (reconnect shipped). |
+| 112 | Friendly-fire follow-ups (card override, per-mode rules, online repl.) | M | **open, has open question** | Card-effect FF override has an undecided API (granularity/direction/stacking, coupled to #68); online-repl. item rides #27. Built on #62/#26 (shipped). No `question` label currently. |
+| 147 | Toggleable card-draw handicap for smaller teams (A4) | S–M | **open, has open question** | 2-team rule decided; **>2-team formula undecided** (Q1), plus per-loser scope (Q2) and per-mode vs match-toggle (Q3). Built on #62/#134 (shipped). Stale branch `claude/issue-147-team-card-handicap` exists (no open PR). No `question` label currently. |
+| 145 | Teams mode with <2 distinct colours (degenerate count) | S | **open, has open question** | What *should* happen (block / warn / fallback / nothing) is an undecided UX call. From #134 (shipped). No `question` label currently. |
+| 85 | Combinable platform flags (Physics, Destructible) + Chain/Rope | L | **open (architectural)** | Its individual flags shipped (#96/#97/#98); the "combination" parent + Chain/Rope is a multi-PR/architectural call. |
 
 ## Epics (umbrella trackers — never a single PR)
 
@@ -48,7 +48,7 @@ All listed sub-issues are now closed/shipped except the netcode reconnect split.
 |---|---|---|
 | 11 | Card draw & pick system | #16, #17, #18 (all shipped) |
 | 12 | Stats & per-card effect engine | #19, #20, #21, #22 (all shipped) |
-| 13 | Multiplayer: local + online netcode | #23–#28 shipped; reconnect split to #151 (in-flight) / #152 (`question`) |
+| 13 | Multiplayer: local + online netcode | #23–#28 shipped; reconnect **#151** shipped (PR #153), host migration split to **#152** (`question`) |
 | 14 | Audio: sound & music system | #29, #30, #31 (shipped; assets still needed — see trackers #47/#56) |
 | 15 | In-game visual arena editor | #32–#36 (all shipped) |
 
@@ -66,21 +66,22 @@ needs a maintainer decision rather than implementation.
 | 48 | #25 (local players) | match-setup UI routed to #26 (shipped) |
 | 49 | #21 (homing/knockback) | tuning notes; team-filtering went to #62 (shipped) |
 | 56 | #31 (music crossfade) | needs music assets; mapping/tuning notes |
-| 66 | #23 (netcode foundation) | live combat repl. → #27 (shipped); seed transport done |
+| 66 | #23 (netcode foundation) | live combat repl. → #27 (shipped); seed transport done; lobby UI → #149 (in-flight) |
+| 151 | #82 (reconnect) | reconnect/slot-hold shipped (PR #153); host migration → #152 (`question`) |
 
 ## Shipped but still open (not actionable)
 
-None — the maintainer closed the prior shipped-but-open set this cycle.
+- **#151** — reconnect / slot-hold merged (PR #153); the issue stays open as the
+  parent for host migration, tracked in **#152**. The maintainer may close it.
 
 ## Dependency notes
 
 - **Netcode spine:** #13 → #23/#24/#25/#26/#27/#28 (all shipped) → reconnect
-  **#151** (in-flight) → host migration **#152** (`question`). The Multiplayer
-  Demo **#149** and the online-replication follow-ups (**#158**, #112's online
-  item) sit on top of this spine.
+  **#151** (shipped) → host migration **#152** (`question`). The Multiplayer
+  Demo **#149** (in-flight) and the online-replication follow-ups (**#158** item 3,
+  #112's online item) sit on top of this spine.
 - **Combat/shield:** **#138** shipped; **#158** is its online-replication
-  follow-up (host-authoritative outcomes already correct online; this is
-  client-side visual parity), self-contained on the snapshot/`Health` seam.
+  follow-up — items 1–2 shipped, item 3 (own-shield prediction) optional polish.
 - **Teams:** #26/#62/#134 (shipped) underpin the open team follow-ups **#147**,
   **#145**, and **#112** — all three still carry open design questions.
 - **Platform flags:** #85's children #96/#97/#98 shipped; the combinable parent
