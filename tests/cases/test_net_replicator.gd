@@ -248,12 +248,17 @@ func _test_client_connected_is_wired_to_slot_reclaim() -> void:
 	# The reconnect handshake hangs off NetworkManager.client_connected: a
 	# NetReplicator subscribes in _ready, so every client (re)connect runs
 	# request_slot_reclaim (#151). Without this wire the reclaim RPC has no caller
-	# and a reconnecting peer is never restored to its held slot. We add a fresh
-	# instance to the tree so _ready() fires deterministically and assert it
-	# subscribed — the autoload's own boot-time _ready connection isn't observable
-	# from inside the headless --script runner.
+	# and a reconnecting peer is never restored to its held slot.
+	#
+	# The headless --script runner does all its work inside _initialize() and then
+	# quit()s without ever pumping a frame, so it never invokes _ready() — neither
+	# for the autoload nor for a node added at runtime (which is why every other
+	# case here drives nodes by calling their methods directly rather than relying
+	# on lifecycle callbacks). We therefore invoke _ready() explicitly to exercise
+	# the real wiring deterministically; the in-body `is_connected` guard keeps the
+	# call idempotent if a future harness ever does fire it.
 	var node = NetReplicatorScript.new()
-	runner.root.add_child(node)
+	node._ready()
 	assert_true(
 		NetworkManager.client_connected.is_connected(node._on_client_connected),
 		"NetReplicator listens for client_connected to trigger slot reclaim",
