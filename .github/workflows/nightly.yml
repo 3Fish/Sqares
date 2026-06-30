@@ -1,0 +1,151 @@
+name: Nightly Build
+
+# Builds the game every night and publishes the binaries to a rolling
+# "nightly" pre-release so anyone can download the latest dev build.
+#
+# - schedule: runs once a night (03:17 UTC — off the top of the hour to
+#   avoid GitHub's cron congestion).
+# - workflow_dispatch: lets a maintainer trigger a build by hand from the
+#   Actions tab (the `force` input skips the "new commits?" guard).
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Build even if there were no new commits in the last 24h"
+        type: boolean
+        default: false
+
+# Needed so the release job can create/update the nightly release and tag.
+permissions:
+  contents: write
+
+jobs:
+  # Skip the nightly when nothing changed, so we don't publish identical
+  # builds (and burn CI minutes) on quiet days. A manual run with force=true
+  # always proceeds.
+  check:
+    name: Check for changes
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.decide.outputs.should_run }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Decide whether to build
+        id: decide
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.force }}" = "true" ]; then
+            echo "Forced run requested."
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Count commits on the default branch in the last 24 hours.
+          COUNT=$(git rev-list --count --since="24 hours ago" HEAD)
+          echo "Commits in the last 24h: $COUNT"
+          if [ "$COUNT" -gt 0 ]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  test:
+    name: Tests
+    needs: check
+    if: needs.check.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    container:
+      image: barichello/godot-ci:4.6
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Import project assets
+        run: godot --headless --verbose --import 2>&1 || true
+
+      - name: Run test suite
+        run: godot --headless --script res://tests/run_tests.gd
+
+  export:
+    name: Export (${{ matrix.platform }})
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux
+            output: sqares.x86_64
+          - platform: windows
+            output: sqares.exe
+          - platform: macos
+            output: sqares.zip
+    container:
+      image: barichello/godot-ci:4.6
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup export templates
+        run: |
+          TMPL_SRC="/root/.local/share/godot/export_templates/4.6.stable"
+          TMPL_DST="${HOME}/.local/share/godot/export_templates/4.6.stable"
+          mkdir -p "$TMPL_DST"
+          if [ "$(realpath "$TMPL_SRC" 2>/dev/null)" != "$(realpath "$TMPL_DST")" ]; then
+            mv "$TMPL_SRC"/* "$TMPL_DST"/
+          fi
+          ls "$TMPL_DST"/
+
+      - name: Import project assets
+        run: godot --headless --verbose --import 2>&1 || true
+
+      - name: Export ${{ matrix.platform }}
+        run: |
+          mkdir -p dist/${{ matrix.platform }}
+          godot --headless --verbose --export-release "${{ matrix.platform }}" "dist/${{ matrix.platform }}/${{ matrix.output }}" 2>&1
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sqares-${{ matrix.platform }}
+          path: dist/${{ matrix.platform }}/
+          retention-days: 3
+
+  release:
+    name: Publish nightly release
+    needs: export
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Package binaries
+        run: |
+          mkdir -p release
+          # Each platform's files land in artifacts/sqares-<platform>/.
+          # Zip per-platform so users get a single, clearly named download.
+          for dir in artifacts/sqares-*; do
+            platform="${dir##*sqares-}"
+            (cd "$dir" && zip -r "$GITHUB_WORKSPACE/release/sqares-nightly-${platform}.zip" .)
+          done
+          ls -lh release/
+
+      - name: Publish rolling nightly release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          DATE=$(date -u +%Y-%m-%d)
+          # Delete the previous nightly release and its tag so the tag moves
+          # to the commit we just built; then recreate it with fresh assets.
+          gh release delete nightly --yes --cleanup-tag 2>/dev/null || true
+          gh release create nightly release/*.zip \
+            --title "Nightly ($DATE)" \
+            --notes "Automated nightly build from \`${GITHUB_SHA:0:7}\` on $DATE. These are unstable development builds — use a tagged release for stable play." \
+            --prerelease \
+            --target "$GITHUB_SHA"
