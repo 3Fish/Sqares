@@ -8,14 +8,15 @@
 
 # Backlog & dependency overview
 
-last-synced: 2026-06-30T12:05:53Z
+last-synced: 2026-06-30T21:05:25Z
 
-21 issues are open. Since the previous sync the only change is a **new community
-suggestion, #169 ("Parallel Cardpick")**, filed by an outside contributor. It was
-refined this run (Phase B): a clarification comment was posted and it moved
-`status: needs-refinement → status: refining`. No dev-flow (Phase A/C) issue
-changed since the last sync, so the dependency analysis below is otherwise
-unchanged from 2026-06-29.
+21 issues are open. Since the previous sync the only change is the community
+suggestion **#169 ("Parallel Cardpick")**: the suggester (algore87) replied to
+the clarification questions, so it was **finalized this run** (Phase B) — the
+issue body was rewritten into a self-contained spec and it moved
+`status: refining → status: awaiting-greenlight`, now waiting on the maintainer's
+manual `greenlit`. No dev-flow (Phase A/C) issue changed since the last sync, so
+the dependency analysis below is otherwise unchanged from 2026-06-29.
 
 No open pull requests this run (PR #167 / #168 merged on the previous run). No
 new issue was implemented: every eligible dev issue's next increment is gated on
@@ -49,7 +50,7 @@ issue — but no eligible issue is currently CLEAR (see selection summary above)
 
 | # | Title | State | Notes |
 |---|---|---|---|
-| 169 | Parallel Cardpick (card-pick mode toggle) | **suggestion / `status: refining`** | Filed by an outside contributor (algore87). Asks for a toggle between sequential "One By One" and simultaneous "All At Once" card picking with a who-hasn't-picked status. Partly rests on a premise that doesn't match the code: the between-rounds screen **already** shows one panel per losing player and lets them pick **in parallel** (`CardSelectionUI`), so simultaneous picking largely exists; what's missing is a *sequential* mode and any *hiding* of hands. Refined this run with 5 clarification questions (which mode is the real goal, where the toggle lives, how hiding works on a shared couch screen, the status indicator/timeout, and the default). Waiting on the suggester; **not** eligible for Phase C until the maintainer applies `greenlit`. |
+| 169 | Parallel Cardpick (card-pick mode toggle) | **suggestion / `status: awaiting-greenlight`** | Filed by an outside contributor (algore87). The suggester replied to the clarification round, so it was **finalized this run** into a self-contained spec: a new **sequential** "One By One" mode alongside the existing **parallel** "All At Once" flow (the between-rounds `CardSelectionUI` already shows one panel per losing player and picks in parallel — what's new is the sequential mode plus *hiding* each player's hand in **online** parallel play); a global **Options** toggle with an adaptive default by player count; a per-player picked/choosing **status indicator**; and an optional **timeout + auto-pick** as a match-setup option. Four residual balance/UX **open questions** are recorded in the spec for the maintainer (adaptive-default threshold given the 2–4 cap, hidden-hands on a shared couch screen, auto-pick-vs-skip on timeout, sequential pick order). Now waiting on the maintainer; **not** eligible for Phase C until `greenlit` is applied. |
 
 ## Actionable / live work (the part selection cares about)
 
@@ -117,6 +118,8 @@ needs assets, or needs a live multi-peer session rather than implementation.
   the smaller-team handicap (**#147** — two-team shipped, >2-team `question`),
   and the degenerate-team warning (#145, shipped/closed via PR #165).
 - **Card pick:** the between-rounds `CardSelectionUI` already supports parallel
-  per-loser picking; the community suggestion **#169** (in Phase B refinement)
-  proposes a sequential/hidden mode toggle on top of it.
+  per-loser picking; the community suggestion **#169** (finalized, now
+  `status: awaiting-greenlight`) proposes a sequential mode + online hidden-hands
+  + status indicator + optional timeout on top of it. Not implementation-eligible
+  until the maintainer applies `greenlit`.
 - **Platform flags:** #85's children #96/#97/#98 all shipped; nothing left.
