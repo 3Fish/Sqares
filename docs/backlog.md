@@ -8,22 +8,24 @@
 
 # Backlog & dependency overview
 
-last-synced: 2026-07-01T09:04:31Z
+last-synced: 2026-07-01T12:14:09Z
 
-21 issues are open. **Nothing of substance changed since the previous sync**
-(2026-07-01T03:06:59Z): the only issue whose timestamp moved is **#171**, and
-that was the routine's *own* trailing Phase-C blocking note posted at 03:09:06Z
-in the same prior run — no external actor, no dependency change. This refresh
-just advances `last-synced` past that self-comment so it stops re-triggering a
-recompute every run; the dependency analysis below is otherwise unchanged.
+21 issues are open. This run **opened auto-PR #173** implementing **item 2 of
+#171** (host-enforced pick timeout on remote losers): the previously-indefinite
+online pick wait now auto-picks host-authoritatively once the #169 timeout
+elapses. #171 was the one non-`question` follow-up with a clean, unit-testable
+slice; every other open dev issue is still `question`-labelled, an epic/parent
+tracker, or blocked. The dependency analysis below is otherwise unchanged; the
+`last-synced` bump also clears the routine's own #171 selection comment from
+re-triggering a recompute next run.
 
 Prior-run context (still current): auto-PR **#172** (the greenlit #169
-"Parallel Cardpick" implementation) was **reviewed and merged** in Phase A —
-squashed to `main` as `3d20894`, which auto-closed **#169**. With #172 merged
-the WIP count is back to **0/3**, but no *other* open issue is currently
-eligible **and** CLEAR — every remaining dev issue is `question`-labelled, an
-epic/parent tracker, or held by a capability limit (needs assets or a live
-multi-peer session). So no PR was opened in Phase C this run either.
+"Parallel Cardpick" implementation) was reviewed and merged in Phase A —
+squashed to `main` as `3d20894`, which auto-closed **#169**. **#173** (this run's
+Phase-C PR) is now the single in-flight auto-PR, so the WIP count is **1/3** and
+a later run will drive it through Phase A. Item 1 of #171 (remote pick-status
+display — client-side UI the headless harness can't exercise) is intentionally
+left open on #171.
 
 ## Legend
 
@@ -40,14 +42,19 @@ multi-peer session). So no PR was opened in Phase C this run either.
 
 ## WIP cap
 
-Auto-authored PRs open: **0** (#172 merged this run). Cap is 3, so Phase C has
-full headroom — but no eligible issue is currently CLEAR (see the tables below),
-so no PR was opened this run.
+Auto-authored PRs open: **1** (#173, opened this run). Cap is 3, so Phase C still
+has headroom for two more — but no *other* eligible issue is currently CLEAR (see
+the tables below), so only the #171 item-2 PR was opened.
 
 ## In-flight auto-PRs
 
-None. **#172** (`Closes #169`) was merged in Phase A this run (squash → `main`
-`3d20894`).
+- **#173** — `[Auto] #171: host-enforced pick timeout on remote losers`
+  (branch `claude/issue-171-host-pick-timeout`). Implements **item 2** of #171:
+  the host now auto-picks (from the synced RNG stream, on a #151-style wall-clock
+  deadline) for any remote loser that exceeds the configured #169 pick timeout,
+  and its own online panel honours the timeout too — closing the indefinite-wait
+  hang. Pure `CardPickSync.auto_pick_unpicked` helper + unit tests. Does **not**
+  close #171 (item 1, the remote pick-status display, remains). Awaiting Phase A.
 
 ## Community suggestions (Phase B — not implementation-eligible)
 
@@ -58,7 +65,7 @@ now closed.
 
 | # | Title | Effort | State | Depends on / notes |
 |---|---|---|---|---|
-| 171 | Networked card-pick status + host-enforced timeout (from #169) | S–M | **open** (`Deferred`) | Online-only follow-up to the now-merged #169: replicate a per-slot picked/choosing flag so peers see the full roster's status (hands stay hidden), and have the host auto-pick for a remote loser who exceeds the timeout. No open design decision; **held by a capability limit** — needs a live multi-peer session to verify (the headless `--script` harness can't stand up a second peer), and item 2 overlaps the #28/#151 disconnect-timeout bookkeeping. |
+| 171 | Networked card-pick status + host-enforced timeout (from #169) | S–M | **in-flight** (`Deferred`) | **Item 2 (host-enforced pick timeout) in PR #173** this run — the host now auto-picks host-authoritatively for a remote loser (or its own square) that exceeds the #169 timeout, on a #151-style wall-clock deadline, via the new unit-tested `CardPickSync.auto_pick_unpicked`. **Item 1 (remote pick-status display)** remains open: replicate a per-slot picked/choosing flag so peers see the full roster's status (hands stay hidden). No open design decision; item 1 is **held by a capability limit** — client-side UI the headless `--script` harness can't exercise. #173 does not close this issue. |
 | 147 | Smaller-team card-draw handicap (A4 from #62) | S | **question** | Two-team half **shipped** (`MatchDirector.resolve_draw_counts` + `team_handicap` setup toggle + tests). Remaining = **>2-team formula (Q1)** plus which-losers (Q2) and fixed-rule-vs-per-`GameMode` (Q3). All three are balance/UX/API calls not derivable from the codebase → `question` applied + comment posted (handed off 2026-06-29). A one-line Q1 answer unblocks a small pure extension to `resolve_draw_counts`. |
 | 112 | Friendly-fire follow-ups (card-effect override) | M | **tracker** (Deferred) | Override **core shipped** (PR #167). Remaining items: (1) **online replication of the consumed-friendly-shot despawn** — prereq met, but raises an undecided scope/architecture choice and is online-only/not headlessly verifiable; (2) per-mode team-interaction rules = future modes' concern. FF×splash/homing + lifesteal-% sub-decisions are the `question`-labelled **#166**. Not a clean autonomous pick. |
 | 166 | Lifesteal-as-% rebalance + friendly_fire × splash/homing | S | **question** (`Deferred`) | Split from #112's override PR. Q1: `vampiric_rounds`' new fractional value once lifesteal is % of damage. Q2: whether the per-shot `friendly_fire` multiplier scales friendly explosion splash and admits teammates to homing. Both small unit-testable additions at the FF seam once decided. |
@@ -123,6 +130,6 @@ needs assets, or needs a live multi-peer session rather than implementation.
   picking; **#169** (greenlit, merged PR #172) added the sequential "One By One"
   mode, the global Options toggle + adaptive default, the pick-status indicator,
   and the optional timeout + random auto-pick on top of it. The online-only
-  remainder (remote status display + host-enforced timeout) is **#171**
-  (`Deferred`).
+  remainder is **#171** (`Deferred`): its host-enforced-timeout half is in-flight
+  in PR #173 this run; the remote pick-status display remains.
 - **Platform flags:** #85's children #96/#97/#98 all shipped; nothing left.
