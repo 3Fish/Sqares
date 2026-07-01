@@ -8,17 +8,22 @@
 
 # Backlog & dependency overview
 
-last-synced: 2026-07-01T03:06:59Z
+last-synced: 2026-07-01T09:04:31Z
 
-21 issues are open. Since the previous sync, auto-PR **#172** (the greenlit #169
+21 issues are open. **Nothing of substance changed since the previous sync**
+(2026-07-01T03:06:59Z): the only issue whose timestamp moved is **#171**, and
+that was the routine's *own* trailing Phase-C blocking note posted at 03:09:06Z
+in the same prior run — no external actor, no dependency change. This refresh
+just advances `last-synced` past that self-comment so it stops re-triggering a
+recompute every run; the dependency analysis below is otherwise unchanged.
+
+Prior-run context (still current): auto-PR **#172** (the greenlit #169
 "Parallel Cardpick" implementation) was **reviewed and merged** in Phase A —
-squashed to `main` as `3d20894`, which auto-closed **#169**. No new issue was
-picked up in Phase C: with #172 merged the WIP count is back to **0/3**, but no
-*other* open issue is currently eligible **and** CLEAR — every remaining dev
-issue is `question`-labelled, an epic/parent tracker, or held by a capability
-limit (needs assets or a live multi-peer session). No other dev-flow (Phase A/C)
-issue changed since the last sync, so the dependency analysis below is otherwise
-unchanged from 2026-06-29.
+squashed to `main` as `3d20894`, which auto-closed **#169**. With #172 merged
+the WIP count is back to **0/3**, but no *other* open issue is currently
+eligible **and** CLEAR — every remaining dev issue is `question`-labelled, an
+epic/parent tracker, or held by a capability limit (needs assets or a live
+multi-peer session). So no PR was opened in Phase C this run either.
 
 ## Legend
 
