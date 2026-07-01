@@ -8,25 +8,21 @@
 
 # Backlog & dependency overview
 
-last-synced: 2026-06-30T21:05:25Z
+last-synced: 2026-07-01T00:19:20Z
 
-21 issues are open. Since the previous sync the only change is the community
-suggestion **#169 ("Parallel Cardpick")**: the suggester (algore87) replied to
-the clarification questions, so it was **finalized this run** (Phase B) — the
-issue body was rewritten into a self-contained spec and it moved
-`status: refining → status: awaiting-greenlight`, now waiting on the maintainer's
-manual `greenlit`. No dev-flow (Phase A/C) issue changed since the last sync, so
-the dependency analysis below is otherwise unchanged from 2026-06-29.
+22 issues are open. Since the previous sync the maintainer **greenlit #169
+("Parallel Cardpick")** and answered its four spec open-questions, moving it out
+of Phase B into normal dev flow. It was **selected and implemented this run**
+(Phase C): the card-pick presentation modes (sequential/parallel), the global
+Options toggle with the adaptive default (`≤4` players → sequential, `>4` →
+parallel), the per-player pick-status indicator, and the optional pick timeout +
+random auto-pick — opened as auto-PR **#172** (`Closes #169`). Its online-only
+residue (networked remote-status display + host-enforced timeout on remote
+losers, both needing a live multi-peer session) was split into the new
+`Deferred` issue **#171**.
 
-No open pull requests this run (PR #167 / #168 merged on the previous run). No
-new issue was implemented: every eligible dev issue's next increment is gated on
-a Tier-1 decision already surfaced under a `question` label (#147, #152, #166),
-or is held by a capability limit the autonomous routine cannot clear — needs
-binary audio assets (#47, #56), needs a live multi-peer session the headless
-`--script` harness can't stand up (#112 item 1, #158 item 3), or is an
-undesigned large feature area (#66 spectator support). The remaining open issues
-are either shipped-but-not-closed parents/trackers or deferred-notes collectors
-whose concrete items already shipped.
+No other dev-flow (Phase A/C) issue changed since the last sync, so the
+dependency analysis below is otherwise unchanged from 2026-06-29.
 
 ## Legend
 
@@ -43,27 +39,36 @@ whose concrete items already shipped.
 
 ## WIP cap
 
-Auto-authored PRs open: **0**. Cap is 3, so Phase C is free to pick up a new
-issue — but no eligible issue is currently CLEAR (see selection summary above).
+Auto-authored PRs open: **1** (#172). Cap is 3, so Phase C still has headroom —
+but no *other* eligible issue is currently CLEAR (every remaining dev issue is
+`question`-labelled, a shipped/tracker parent, an epic, or held by a capability
+limit — see the tables below).
+
+## In-flight auto-PRs
+
+| PR | Closes | Title | State |
+|---|---|---|---|
+| 172 | #169 | Parallel/Sequential card-pick modes + status indicator + pick timeout | Opened this run; awaits Phase A review. |
 
 ## Community suggestions (Phase B — not implementation-eligible)
 
-| # | Title | State | Notes |
-|---|---|---|---|
-| 169 | Parallel Cardpick (card-pick mode toggle) | **suggestion / `status: awaiting-greenlight`** | Filed by an outside contributor (algore87). The suggester replied to the clarification round, so it was **finalized this run** into a self-contained spec: a new **sequential** "One By One" mode alongside the existing **parallel** "All At Once" flow (the between-rounds `CardSelectionUI` already shows one panel per losing player and picks in parallel — what's new is the sequential mode plus *hiding* each player's hand in **online** parallel play); a global **Options** toggle with an adaptive default by player count; a per-player picked/choosing **status indicator**; and an optional **timeout + auto-pick** as a match-setup option. Four residual balance/UX **open questions** are recorded in the spec for the maintainer (adaptive-default threshold given the 2–4 cap, hidden-hands on a shared couch screen, auto-pick-vs-skip on timeout, sequential pick order). Now waiting on the maintainer; **not** eligible for Phase C until `greenlit` is applied. |
+None open. #169 was **greenlit** by the maintainer and has left the suggestion
+flow (now in dev flow, implemented via PR #172).
 
 ## Actionable / live work (the part selection cares about)
 
 | # | Title | Effort | State | Depends on / notes |
 |---|---|---|---|---|
+| 169 | Parallel/Sequential card-pick modes | M–L | **in-flight** (PR #172) | Greenlit + all four spec questions answered by the maintainer (threshold 4; hidden hands online-only; timeout→random auto-pick; sequential = fresh random order/round). Implemented this run for local play + the host's own panel; online remote-status + host-enforced timeout deferred to **#171**. |
+| 171 | Networked card-pick status + host-enforced timeout (from #169) | S–M | **open** (`Deferred`) | Online-only follow-up: replicate a per-slot picked/choosing flag so peers see the full roster's status (hands stay hidden), and have the host auto-pick for a remote loser who exceeds the timeout. No open design decision; needs a live multi-peer session to verify (overlaps the #28/#151 disconnect-timeout bookkeeping). |
 | 147 | Smaller-team card-draw handicap (A4 from #62) | S | **question** | Two-team half **shipped** (`MatchDirector.resolve_draw_counts` + `team_handicap` setup toggle + tests). Remaining = **>2-team formula (Q1)** plus which-losers (Q2) and fixed-rule-vs-per-`GameMode` (Q3). All three are balance/UX/API calls not derivable from the codebase → `question` applied + comment posted (handed off 2026-06-29). A one-line Q1 answer unblocks a small pure extension to `resolve_draw_counts`. |
-| 112 | Friendly-fire follow-ups (card-effect override) | M | **tracker** (Deferred) | Override **core shipped** (PR #167): per-shot `friendly_fire` float on `ShotSpec`, scaling direct-hit friendly damage. Remaining items: (1) **online replication of the consumed-friendly-shot despawn** — prereq (#27/#28) **met**, but it raises an **undecided scope/architecture choice** (only consumed-friendly shots, or every host-side despawn? bandwidth trade-off) and is online-only/not headlessly verifiable; (2) per-mode team-interaction rules = **future modes' concern**, no decision now. The FF×splash/homing + lifesteal-% sub-decisions are the `question`-labelled **#166**. Not a clean autonomous pick. |
-| 166 | Lifesteal-as-% rebalance + friendly_fire × splash/homing | S | **question** (`Deferred`) | Split from #112's override PR. **Q1:** `vampiric_rounds`' new fractional value once lifesteal is % of damage (`15.0` flat → 1500%). **Q2:** whether the per-shot `friendly_fire` multiplier scales friendly *explosion splash* and admits teammates to *homing* (today both stay on the binary match toggle). Both small unit-testable additions at the isolated FF seam once decided. |
-| 158 | Online replication of the reflecting shield | S | **open** (items 1–2 shipped) | Items 1 (remote shield-up snapshot, #161) and 2 (reflected-bullet re-broadcast, #162) merged. Only **item 3** remains — client-side *prediction* of one's own shield raise, **explicitly optional polish**; host correction of a mispredicted shield carries a flicker/charge-on-wire design nuance and is not headlessly testable. Tracker only. |
-| 163 | Multiplayer demo follow-ups (invites + lobby polish) | M–L | **tracker** (Deferred) | FF + handicap toggle surfacing **shipped** (PR #168). Remaining sub-items: convenient invites (lobby-code/relay, Steam — large, own design/tech, **deferred for prioritisation** by the maintainer, not a blocking question), per-player identity + colour-based team picking (**blocked on #66** identity replication — #82 closed), richer join/leave feedback (some of which is a UX call). Not a single clean PR. |
+| 112 | Friendly-fire follow-ups (card-effect override) | M | **tracker** (Deferred) | Override **core shipped** (PR #167). Remaining items: (1) **online replication of the consumed-friendly-shot despawn** — prereq met, but raises an undecided scope/architecture choice and is online-only/not headlessly verifiable; (2) per-mode team-interaction rules = future modes' concern. FF×splash/homing + lifesteal-% sub-decisions are the `question`-labelled **#166**. Not a clean autonomous pick. |
+| 166 | Lifesteal-as-% rebalance + friendly_fire × splash/homing | S | **question** (`Deferred`) | Split from #112's override PR. Q1: `vampiric_rounds`' new fractional value once lifesteal is % of damage. Q2: whether the per-shot `friendly_fire` multiplier scales friendly explosion splash and admits teammates to homing. Both small unit-testable additions at the FF seam once decided. |
+| 158 | Online replication of the reflecting shield | S | **open** (items 1–2 shipped) | Items 1–2 merged (#161/#162). Only **item 3** remains — client-side prediction of one's own shield raise, explicitly optional polish; not headlessly testable. Tracker only. |
+| 163 | Multiplayer demo follow-ups (invites + lobby polish) | M–L | **tracker** (Deferred) | FF + handicap toggle surfacing **shipped** (PR #168). Remaining: convenient invites (lobby-code/relay, Steam — large, own design/tech, deferred for prioritisation), per-player identity + colour-based team picking (blocked on #66 identity replication), richer join/leave feedback (some a UX call). Not a single clean PR. |
 | 152 | Host migration (re-elect + state transfer) | L | **question** | Blocked on maintainer (re-election rule, departed-host slot, migration pause, RNG-stream position, hard-fail fallback). Builds on #151 (reconnect shipped). |
-| 151 | Mid-match disconnect/reconnect + host migration | — | **shipped (reconnect) / parent** | Reconnect + slot-hold merged (PR #153). Remaining work = host migration, split to **#152** (`question`). No clean residual; the maintainer may close it once #152 lands. |
-| 85 | Combinable platform flags (Physics, Destructible) + Chain/Rope | L | **shipped** | Split into #96/#97/#98, **all shipped** (incl. Chain/Rope #98). The flags are independent booleans so they already combine. Effectively an open parent; the maintainer may close it. |
+| 151 | Mid-match disconnect/reconnect + host migration | — | **shipped (reconnect) / parent** | Reconnect + slot-hold merged (PR #153). Remaining work = host migration, split to **#152** (`question`). The maintainer may close it once #152 lands. |
+| 85 | Combinable platform flags (Physics, Destructible) + Chain/Rope | L | **shipped** | Split into #96/#97/#98, **all shipped**. The flags are independent booleans so they already combine. Effectively an open parent; the maintainer may close it. |
 
 ## Epics (umbrella trackers — never a single PR)
 
@@ -71,9 +76,9 @@ All listed sub-issues are now closed/shipped except the netcode host-migration s
 
 | # | Title | Sub-issues |
 |---|---|---|
-| 11 | Card draw & pick system | #16, #17, #18 (all shipped) |
+| 11 | Card draw & pick system | #16, #17, #18 (all shipped); presentation modes added on top via #169 (PR #172) |
 | 12 | Stats & per-card effect engine | #19, #20, #21, #22 (all shipped) |
-| 13 | Multiplayer: local + online netcode | #23–#27 **all closed** (incl. #27 combat replication); resilience **#28 closed**; deferred follow-ups **#82 closed**; reconnect **#151** shipped (PR #153); host migration split to **#152** (`question`) |
+| 13 | Multiplayer: local + online netcode | #23–#27 **all closed**; resilience **#28 closed**; deferred follow-ups **#82 closed**; reconnect **#151** shipped (PR #153); host migration split to **#152** (`question`) |
 | 14 | Audio: sound & music system | #29, #30, #31 (shipped; assets still needed — see trackers #47/#56) |
 | 15 | In-game visual arena editor | #32–#36 (all shipped) |
 
@@ -91,7 +96,7 @@ needs assets, or needs a live multi-peer session rather than implementation.
 | 48 | #25 (local players) | match-setup UI routed to #26 (shipped) |
 | 49 | #21 (homing/knockback) | homing-feel tuning (a balance default already in place); team-filtering went to #62 (shipped) |
 | 56 | #31 (music crossfade) | needs music assets; mapping/tuning notes |
-| 66 | #23 (netcode foundation) | live combat repl → #27 (**closed**); seed transport done; lobby UI → #149 (shipped); residual = **spectator support (undesigned, large)** — an undesigned feature area noted for the future, not a single decision-gated unit |
+| 66 | #23 (netcode foundation) | live combat repl → #27 (**closed**); seed transport done; lobby UI → #149 (shipped); residual = **spectator support (undesigned, large)** — noted for the future, not a single decision-gated unit |
 
 ## Shipped but still open (not actionable)
 
@@ -107,19 +112,18 @@ needs assets, or needs a live multi-peer session rather than implementation.
   (closed)** → **#28 resilience (closed)** → deferred follow-ups **#82 (closed)**
   → reconnect **#151** (shipped) → host migration **#152** (`question`). The
   Multiplayer Demo **#149** (shipped) sat on top of this spine; its follow-ups
-  are tracked in **#163** (per-player identity rides #66). With #27/#28/#82
-  closed, the remaining replication follow-ups (#112 item 1, #158 item 3) are no
-  longer prereq-blocked — they're held by live-multipeer verification limits
-  and/or an undecided scope choice.
+  are tracked in **#163**. The remaining replication follow-ups (#112 item 1,
+  #158 item 3, and the new **#171** card-pick status/timeout) are held by
+  live-multipeer verification limits and/or an undecided scope choice.
 - **Combat/shield:** **#138** shipped; **#158** is its online-replication
   follow-up — items 1–2 shipped, item 3 (own-shield prediction) optional polish.
 - **Teams:** #26/#62/#134 (shipped) underpin the team follow-ups — friendly fire
   (#62, shipped; card-override core #112 shipped via PR #167; lobby toggle #168),
   the smaller-team handicap (**#147** — two-team shipped, >2-team `question`),
   and the degenerate-team warning (#145, shipped/closed via PR #165).
-- **Card pick:** the between-rounds `CardSelectionUI` already supports parallel
-  per-loser picking; the community suggestion **#169** (finalized, now
-  `status: awaiting-greenlight`) proposes a sequential mode + online hidden-hands
-  + status indicator + optional timeout on top of it. Not implementation-eligible
-  until the maintainer applies `greenlit`.
+- **Card pick:** the between-rounds `CardSelectionUI` supported parallel per-loser
+  picking; **#169** (greenlit, PR #172) adds the sequential "One By One" mode, the
+  global Options toggle + adaptive default, the pick-status indicator, and the
+  optional timeout + random auto-pick on top of it. The online-only remainder
+  (remote status display + host-enforced timeout) is **#171** (`Deferred`).
 - **Platform flags:** #85's children #96/#97/#98 all shipped; nothing left.
