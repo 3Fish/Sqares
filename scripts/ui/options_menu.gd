@@ -15,6 +15,17 @@ const BUS_LABELS := {
 }
 
 
+# Card-pick mode rows (#169): [setting id, display label], in picker order. The
+# setting ids are the `CardPickMode` constants stored by `GameplaySettings`. Built
+# in a function rather than a const so it can reference the global class's values.
+func _card_pick_mode_options() -> Array:
+	return [
+		[CardPickMode.AUTO, "Auto (by player count)"],
+		[CardPickMode.SEQUENTIAL, "One By One"],
+		[CardPickMode.PARALLEL, "All At Once"],
+	]
+
+
 func _ready() -> void:
 	var bg := ColorRect.new()
 	bg.color = Color(0.102, 0.102, 0.18, 1.0)
@@ -37,6 +48,7 @@ func _ready() -> void:
 		_add_volume_row(vbox, bus)
 
 	_add_fullscreen_row(vbox)
+	_add_card_pick_mode_row(vbox)
 
 	var back := Button.new()
 	back.text = "Back"
@@ -79,7 +91,35 @@ func _add_fullscreen_row(parent: Node) -> void:
 	parent.add_child(toggle)
 
 
+## Card-pick presentation mode selector (#169): a global setting for how the
+## between-rounds card phase plays out. "Auto" defers to the adaptive default by
+## player count; the two explicit modes force sequential ("One By One") or
+## parallel ("All At Once"). Applied live to `GameplaySettings`; persisted on Back.
+func _add_card_pick_mode_row(parent: Node) -> void:
+	var label := Label.new()
+	label.text = "Card pick"
+	parent.add_child(label)
+
+	var options := _card_pick_mode_options()
+	var picker := OptionButton.new()
+	picker.custom_minimum_size = Vector2(320, 0)
+	for entry: Array in options:
+		picker.add_item(String(entry[1]))
+	# Select the row matching the stored setting (defaulting to Auto).
+	var current := CardPickMode.normalize_setting(GameplaySettings.card_pick_mode)
+	for i in options.size():
+		if String(options[i][0]) == current:
+			picker.select(i)
+			break
+	picker.item_selected.connect(
+		func(index: int) -> void:
+			GameplaySettings.set_card_pick_mode(String(_card_pick_mode_options()[index][0]))
+	)
+	parent.add_child(picker)
+
+
 func _on_back_pressed() -> void:
 	AudioManager.save_settings()
 	DisplaySettings.save_settings()
+	GameplaySettings.save_settings()
 	get_tree().change_scene_to_file(MAIN_MENU_SCENE)

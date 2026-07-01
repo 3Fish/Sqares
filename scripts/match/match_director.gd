@@ -48,6 +48,11 @@ static var pending_arena_id: String = ""
 ## chosen members each round. Exposed here as an export until the match-setup
 ## screen surfaces it, mirroring `friendly_fire`.
 @export var team_handicap: bool = false
+## Between-rounds card-pick timeout in seconds (#169). `0.0` (default) waits
+## indefinitely for every loser to lock in; when positive, a loser who runs out of
+## time is auto-picked a random card. Set from the match-setup screen via
+## MatchConfig, mirroring `friendly_fire` / `team_handicap`.
+@export var pick_timeout: float = 0.0
 
 @onready var _arena_container: Node2D  = $"../ArenaContainer"
 @onready var _players_container: Node2D = $"../PlayersContainer"
@@ -89,6 +94,7 @@ func _ready() -> void:
 		arena_id = MatchConfig.arena_id
 		friendly_fire = MatchConfig.friendly_fire
 		team_handicap = MatchConfig.team_handicap
+		pick_timeout = MatchConfig.pick_timeout
 	# Consume a one-shot playtest arena, if the editor handed one over (#36). The
 	# editor loads match.tscn directly (no setup config), and even if both were
 	# set this keeps the playtest arena's precedence.
@@ -332,12 +338,29 @@ func _run_card_selection(winning_team: int) -> void:
 		hands[pid] = CardDraw.weighted_draw(cards, int(counts[pid]), RNGService.generator())
 
 	if NetworkManager.is_networked():
+		# Online each peer shows only its own single panel (hidden hands, #169), so
+		# the sequential/parallel presentation is a local-screen concern handled
+		# below; the networked path keeps its host-authoritative indefinite wait.
 		await _run_networked_card_selection(counts.keys(), hands)
 		return
 
+	# Resolve the presentation mode from the global Options setting and this match's
+	# player count (#169): AUTO picks sequential at/below the adaptive threshold. In
+	# sequential mode the pick order is a fresh random permutation each round, drawn
+	# from the synced per-round RNG stream (#24) so it is deterministic.
+	var mode := CardPickMode.resolve_mode(GameplaySettings.card_pick_mode, player_count)
+	var order: Array = []
+	if mode == CardPickMode.SEQUENTIAL:
+		order = CardPickMode.pick_order(counts.keys(), RNGService.generator())
+
 	var ui := CardSelectionUI.new()
 	add_child(ui)
-	ui.begin(hands)
+	ui.begin(hands, {}, {
+		"mode": mode,
+		"order": order,
+		"timeout": pick_timeout,
+		"rng": RNGService.generator(),
+	})
 	var picks: Dictionary = await ui.selection_complete
 	_record_picks(picks)
 	ui.queue_free()

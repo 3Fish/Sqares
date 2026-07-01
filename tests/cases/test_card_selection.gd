@@ -96,3 +96,53 @@ func _test_begin_subset_slot_picks_correctly() -> void:
 	assert_eq(captured.size(), 1, "only the single shown panel is reported")
 	assert_eq(captured[2].id, "x", "the highlighted (first) card is the pick")
 	ui.queue_free()
+
+
+# --- sequential ("One By One") mode (#169) ---------------------------------
+
+func _test_sequential_hands_off_in_order_and_completes() -> void:
+	# Only the active picker (first in `order`) is live; confirming hands off to the
+	# next in order, and the screen completes once the last picker locks in.
+	var ui := CardSelectionUI.new()
+	runner.root.add_child(ui)
+	var holder: Dictionary = {"picks": {}}
+	ui.selection_complete.connect(func(p: Dictionary) -> void: holder["picks"] = p)
+	ui.begin({0: [_make_card("a")], 1: [_make_card("b")]}, {},
+		{"mode": CardPickMode.SEQUENTIAL, "order": [1, 0]})
+	assert_eq(ui._active, 1, "first slot in the order is active")
+	ui._confirm(1)
+	assert_eq(ui._active, 0, "confirming hands off to the next slot in the order")
+	assert_true(holder["picks"].is_empty(), "phase not complete until every picker has locked in")
+	ui._confirm(0)
+	assert_eq(ui._active, -1, "no active picker once all have confirmed")
+	assert_eq((holder["picks"] as Dictionary).size(), 2, "completion reports both picks")
+	ui.queue_free()
+
+
+func _test_sequential_skips_empty_hands() -> void:
+	# An empty-hand loser is auto-confirmed in begin() and skipped by the hand-off,
+	# so the active picker lands on the first slot that actually has cards.
+	var ui := CardSelectionUI.new()
+	runner.root.add_child(ui)
+	ui.begin({0: [], 1: [_make_card("b")]}, {},
+		{"mode": CardPickMode.SEQUENTIAL, "order": [0, 1]})
+	assert_eq(ui._active, 1, "the empty-hand slot is skipped; slot 1 is active")
+	ui.queue_free()
+
+
+func _test_auto_pick_confirms_a_card_from_the_hand() -> void:
+	# A timeout auto-pick chooses a card from the hand (via the seeded rng) and
+	# confirms the panel, so the phase settles even if nobody pressed a button.
+	var ui := CardSelectionUI.new()
+	runner.root.add_child(ui)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 123
+	var holder: Dictionary = {"picks": {}}
+	ui.selection_complete.connect(func(p: Dictionary) -> void: holder["picks"] = p)
+	ui.begin({0: [_make_card("a"), _make_card("b"), _make_card("c")]}, {},
+		{"mode": CardPickMode.PARALLEL, "timeout": 5.0, "rng": rng})
+	ui._auto_pick(0)
+	var captured: Dictionary = holder["picks"]
+	assert_true(captured.has(0), "auto-pick confirms the panel")
+	assert_not_null(captured[0], "auto-pick chose a real card from the hand")
+	ui.queue_free()

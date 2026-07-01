@@ -155,6 +155,37 @@ func _test_configure_stages_team_handicap() -> void:
 	assert_false(MatchConfig.team_handicap, "reset clears the handicap")
 
 
+func _test_pick_timeout_serialises_and_round_trips() -> void:
+	# The card-pick timeout (#169) persists in a saved template, clamped >= 0.
+	var modes := ["ffa", "teams"]
+	var arenas := ["crossroads", "highrise"]
+	var d := MatchConfig.to_dict("teams", 4, "highrise", true, false, 20.0)
+	assert_almost_eq(d["pick_timeout"], 20.0, "timeout serialised on the way out")
+	var norm := MatchConfig.normalize_dict(d, modes, arenas)
+	assert_almost_eq(norm["pick_timeout"], 20.0, "timeout survives the round trip")
+	# A negative (hand-edited) value clamps to 0, and a missing key / legacy to_dict
+	# call defaults the timeout off — backwards compatible.
+	assert_almost_eq(MatchConfig.normalize_dict({"pick_timeout": -5.0}, modes, arenas)["pick_timeout"],
+		0.0, "negative timeout clamps to 0")
+	assert_almost_eq(MatchConfig.normalize_dict({}, modes, arenas)["pick_timeout"],
+		0.0, "missing timeout key -> 0")
+	assert_almost_eq(MatchConfig.to_dict("teams", 4, "highrise", true)["pick_timeout"],
+		0.0, "legacy to_dict defaults the timeout off")
+
+
+func _test_configure_stages_pick_timeout() -> void:
+	# configure() threads the timeout through to the staged config (default off,
+	# negatives clamped to 0).
+	MatchConfig.configure("ffa", 2, 5, "crossroads", true, [], [], false, 20.0)
+	assert_almost_eq(MatchConfig.pick_timeout, 20.0, "configure stages the timeout")
+	MatchConfig.configure("ffa", 2, 5, "crossroads", true, [], [], false, -3.0)
+	assert_almost_eq(MatchConfig.pick_timeout, 0.0, "configure clamps a negative timeout to 0")
+	MatchConfig.configure("ffa", 2, 5, "crossroads")
+	assert_almost_eq(MatchConfig.pick_timeout, 0.0, "configure defaults the timeout off")
+	MatchConfig.reset()
+	assert_almost_eq(MatchConfig.pick_timeout, 0.0, "reset clears the timeout")
+
+
 func _test_default_config_name_picks_lowest_free_slot() -> void:
 	assert_eq(MatchConfig.default_config_name([]), "Config 1", "first default is Config 1")
 	assert_eq(MatchConfig.default_config_name(["Config 1", "Config 2"]), "Config 3", "skips taken slots")
