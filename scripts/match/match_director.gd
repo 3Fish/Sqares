@@ -386,22 +386,50 @@ func _run_networked_card_selection(loser_ids: Array, hands: Dictionary) -> void:
 		picks[slot] = CardRegistry.get_card(card_id) if card_id != "" else null
 	NetReplicator.card_pick_received.connect(on_remote_pick)
 
-	# If the host's own square lost, it picks on this screen (driven by p1).
+	# If the host's own square lost, it picks on this screen (driven by p1). It runs
+	# the same configured pick timeout as local play, so the host auto-picks for its
+	# own square just like any other player (#171).
 	var host_ui: CardSelectionUI = null
 	if loser_ids.has(local_slot) and hands.has(local_slot):
 		host_ui = CardSelectionUI.new()
 		add_child(host_ui)
-		host_ui.begin({local_slot: hands[local_slot]}, {local_slot: 0})
+		host_ui.begin({local_slot: hands[local_slot]}, {local_slot: 0},
+			{"timeout": pick_timeout, "rng": RNGService.generator()})
 		host_ui.selection_complete.connect(func(p: Dictionary) -> void:
 			if p.has(local_slot) and not picks.has(local_slot):
 				picks[local_slot] = p[local_slot])
 
-	# Gate the next round on every loser's pick being in (no timeout — the same
-	# indefinite wait as local play; a dropped peer is #28's resilience scope).
+	# Remote losers the host resolves authoritatively on timeout — its own slot is
+	# driven by `host_ui` above (with its own timeout), so it's excluded here to
+	# avoid the two paths racing to pick the same slot.
+	var remote_losers: Array = []
+	for slot in loser_ids:
+		if int(slot) != local_slot:
+			remote_losers.append(int(slot))
+
+	# Gate the next round on every loser's pick being in. With a pick timeout
+	# configured (#169) the host auto-picks for any remote loser that hasn't
+	# responded once the window elapses (#171) — drawing from that slot's broadcast
+	# hand on the synced RNG stream — so a silent or dropped peer can't hang the
+	# phase indefinitely. A non-positive timeout keeps the original indefinite wait,
+	# matching local play (a mid-phase disconnect is #28/#151's resilience scope).
+	# The deadline is host wall-clock (Time.get_ticks_msec), mirroring the reconnect
+	# slot-hold bookkeeping from #151.
+	var deadline_ms := 0
+	if pick_timeout > 0.0:
+		deadline_ms = Time.get_ticks_msec() + int(pick_timeout * 1000.0)
 	while not CardPickSync.all_picked(loser_ids, picks):
 		await get_tree().process_frame
 		if _match_over:
 			break
+		if deadline_ms > 0 and Time.get_ticks_msec() >= deadline_ms:
+			var auto := CardPickSync.auto_pick_unpicked(remote_losers, picks, serialized, RNGService.generator())
+			for slot in auto:
+				var card_id := String(auto[slot])
+				picks[int(slot)] = CardRegistry.get_card(card_id) if card_id != "" else null
+			# Remote losers are resolved once; stop re-firing while we wait on the
+			# host's own `host_ui` pick (its timeout settles that slot separately).
+			deadline_ms = 0
 
 	if NetReplicator.card_pick_received.is_connected(on_remote_pick):
 		NetReplicator.card_pick_received.disconnect(on_remote_pick)

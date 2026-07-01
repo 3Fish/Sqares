@@ -47,3 +47,24 @@ static func is_valid_pick(slot: int, card_id: String, serialized_hands: Dictiona
 	if hand.is_empty():
 		return card_id == ""
 	return hand.has(card_id)
+
+
+## Host-side timeout resolution (#171, from #169). When the pick window elapses,
+## the host auto-picks for every loser in `loser_ids` that hasn't chosen yet,
+## drawing a random card from that slot's broadcast hand via the synced `rng`
+## (the same seeded stream that dealt the hands, so the choice is deterministic
+## and host-authoritative). Returns a { slot:int -> card_id:String } map of just
+## the auto-picks to apply: a slot already present in `picks` is left untouched,
+## and a slot with an empty (or missing) hand resolves to "" — the "nothing to
+## pick" case, matching `is_valid_pick`. Pure so the host-enforced timeout is
+## unit-tested without a live peer.
+static func auto_pick_unpicked(loser_ids: Array, picks: Dictionary, serialized_hands: Dictionary, rng: RandomNumberGenerator) -> Dictionary:
+	var out: Dictionary = {}
+	for slot in loser_ids:
+		var s := int(slot)
+		if picks.has(s):
+			continue
+		var hand: Array = serialized_hands[s] if serialized_hands.has(s) else []
+		var idx := CardPickMode.auto_pick_index(hand.size(), rng)
+		out[s] = String(hand[idx]) if idx >= 0 else ""
+	return out
