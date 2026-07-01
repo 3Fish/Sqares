@@ -43,3 +43,45 @@ func _test_is_valid_pick() -> void:
 	assert_false(CardPickSync.is_valid_pick(9, "a", wire), "a slot with no hand is rejected")
 	assert_true(CardPickSync.is_valid_pick(1, "", wire), "empty hand accepts the empty (no-pick) id")
 	assert_false(CardPickSync.is_valid_pick(1, "a", wire), "empty hand rejects any real card id")
+
+
+func _seeded_rng(s: int) -> RandomNumberGenerator:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = s
+	return rng
+
+
+func _test_auto_pick_unpicked_skips_already_picked() -> void:
+	var wire := {0: ["a", "b"], 1: ["c", "d"]}
+	# Slot 0 already chose; only the un-picked slot 1 should be auto-resolved.
+	var auto := CardPickSync.auto_pick_unpicked([0, 1], {0: null}, wire, _seeded_rng(1))
+	assert_false(auto.has(0), "a slot that already picked is left untouched")
+	assert_true(auto.has(1), "an un-picked loser is auto-resolved")
+	assert_true((wire[1] as Array).has(auto[1]), "the auto-pick is a card from that slot's own hand")
+
+
+func _test_auto_pick_unpicked_empty_and_missing_hands() -> void:
+	var wire := {0: [], 2: ["z"]}
+	# Slot 0 was dealt an empty hand; slot 5 has no hand at all. Both resolve to the
+	# "" no-pick id, matching is_valid_pick's empty-hand contract.
+	var auto := CardPickSync.auto_pick_unpicked([0, 5], {}, wire, _seeded_rng(3))
+	assert_eq(String(auto[0]), "", "an empty hand auto-resolves to the no-pick id")
+	assert_eq(String(auto[5]), "", "a slot with no broadcast hand auto-resolves to the no-pick id")
+
+
+func _test_auto_pick_unpicked_is_deterministic() -> void:
+	var wire := {1: ["a", "b", "c", "d"]}
+	# Same seeded stream -> same auto-pick, so a host resolution is reproducible.
+	var a := CardPickSync.auto_pick_unpicked([1], {}, wire, _seeded_rng(9))
+	var b := CardPickSync.auto_pick_unpicked([1], {}, wire, _seeded_rng(9))
+	assert_eq(String(a[1]), String(b[1]), "the same seed yields the same auto-pick")
+
+
+func _test_auto_pick_unpicked_resolves_every_open_loser() -> void:
+	var wire := {0: ["a"], 1: ["b", "c"], 2: []}
+	# With no prior picks, every listed loser gets an entry so the phase can settle.
+	var auto := CardPickSync.auto_pick_unpicked([0, 1, 2], {}, wire, _seeded_rng(5))
+	assert_eq(auto.size(), 3, "every un-picked loser is resolved")
+	assert_eq(String(auto[0]), "a", "a single-card hand resolves to that card")
+	assert_true((wire[1] as Array).has(auto[1]), "a multi-card hand resolves to one of its cards")
+	assert_eq(String(auto[2]), "", "an empty hand resolves to the no-pick id")
