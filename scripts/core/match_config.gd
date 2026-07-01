@@ -43,6 +43,11 @@ var friendly_fire: bool = true
 ## `friendly_fire`. Off by default (historical behaviour); persisted in saved
 ## templates (#135).
 var team_handicap: bool = false
+## Between-rounds card-pick timeout in seconds (#169), a general match-setup
+## option. `0.0` means no timeout — the phase waits indefinitely for every player
+## to lock in (historical behaviour). When positive, a player who runs out of time
+## is auto-picked a random card. Persisted in saved templates (#135).
+var pick_timeout: float = 0.0
 
 ## Per-player identity chosen in setup (#132), one entry per active player slot.
 ## `player_names` are sanitised strings; `player_colors` are palette indices into
@@ -58,13 +63,14 @@ var player_colors: Array = []
 ## in-range selection regardless of what a caller passes.
 func configure(p_mode: String, p_player_count: int, p_wins: int, p_arena: String,
 		p_friendly_fire: bool = true, p_names: Array = [], p_colors: Array = [],
-		p_team_handicap: bool = false) -> void:
+		p_team_handicap: bool = false, p_pick_timeout: float = 0.0) -> void:
 	game_mode = p_mode
 	player_count = MatchDirector.clamp_player_count(p_player_count)
 	wins_needed = clamp_wins(p_wins)
 	arena_id = p_arena
 	friendly_fire = p_friendly_fire
 	team_handicap = p_team_handicap
+	pick_timeout = maxf(0.0, p_pick_timeout)
 	# Normalise per-player identity to exactly `player_count` sane entries (#132) so
 	# the match always reads a full, in-range name/colour list regardless of what
 	# the setup screen passed.
@@ -91,6 +97,7 @@ func reset() -> void:
 	arena_id = DEFAULT_ARENA
 	friendly_fire = true
 	team_handicap = false
+	pick_timeout = 0.0
 	player_names = []
 	player_colors = []
 
@@ -218,7 +225,7 @@ static func resolve_choice(requested: String, available: Array, fallback: String
 ## Serialises the persisted match-template fields into a plain dictionary (#135).
 ## Wins are clamped on the way out so a saved file is always in-range.
 static func to_dict(p_mode: String, p_wins: int, p_arena: String, p_friendly_fire: bool,
-		p_team_handicap: bool = false) -> Dictionary:
+		p_team_handicap: bool = false, p_pick_timeout: float = 0.0) -> Dictionary:
 	return {
 		"version": CONFIG_VERSION,
 		"game_mode": p_mode,
@@ -226,6 +233,7 @@ static func to_dict(p_mode: String, p_wins: int, p_arena: String, p_friendly_fir
 		"arena_id": p_arena,
 		"friendly_fire": p_friendly_fire,
 		"team_handicap": p_team_handicap,
+		"pick_timeout": maxf(0.0, p_pick_timeout),
 	}
 
 
@@ -243,6 +251,7 @@ static func normalize_dict(data: Dictionary, available_modes: Array, available_a
 		"arena_id": resolve_choice(String(data.get("arena_id", DEFAULT_ARENA)), available_arenas, DEFAULT_ARENA),
 		"friendly_fire": bool(data.get("friendly_fire", true)),
 		"team_handicap": bool(data.get("team_handicap", false)),
+		"pick_timeout": maxf(0.0, float(data.get("pick_timeout", 0.0))),
 	}
 
 

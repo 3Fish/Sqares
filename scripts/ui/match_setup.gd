@@ -32,6 +32,8 @@ var _mode_options_button: Button
 var _mode_options_popup: PopupPanel
 var _friendly_fire_toggle: CheckButton
 var _team_handicap_toggle: CheckButton
+## Card-pick timeout toggle (#169), a general (mode-independent) match option.
+var _pick_timeout_toggle: CheckButton
 # Read-only preview of how the chosen colours group into teams (#134). Visible only
 # for team-grouping modes (Teams); colours don't form teams in FFA (#134 A4).
 var _teams_preview: Label
@@ -52,6 +54,9 @@ var _pending_save_name: String = ""
 # Staged mode-specific options (written into MatchConfig on start).
 var _friendly_fire: bool = true
 var _team_handicap: bool = false
+# Staged general options (#169): whether the between-rounds card-pick timeout +
+# auto-pick is enabled for this match.
+var _pick_timeout_enabled: bool = false
 
 # Per-player name + colour rows (#132), one per potential local player slot. Only
 # the rows for the currently-selected player count are visible; all are read on
@@ -87,6 +92,14 @@ func _ready() -> void:
 	_rounds_picker = _add_spin_row(vbox, "Rounds to win",
 		MatchConfig.MIN_WINS, MatchConfig.MAX_WINS, MatchConfig.DEFAULT_WINS)
 	_arena_picker = _add_option_row(vbox, "Arena", _arena_labels())
+
+	# General card-pick timeout toggle (#169): applies to every mode, so it lives in
+	# the main setup list rather than the team-only Mode Options submenu.
+	_pick_timeout_toggle = CheckButton.new()
+	_pick_timeout_toggle.text = "Card-pick timeout (auto-pick)"
+	_pick_timeout_toggle.button_pressed = _pick_timeout_enabled
+	_pick_timeout_toggle.toggled.connect(_on_pick_timeout_toggled)
+	vbox.add_child(_pick_timeout_toggle)
 
 	# Per-player name + colour rows (#132).
 	_build_player_rows(vbox)
@@ -144,8 +157,18 @@ func _on_start_pressed() -> void:
 	for i in players:
 		names.append(_name_edits[i].text)
 		colors.append(_color_pickers[i].selected)
-	MatchConfig.configure(_current_mode_id(), players, rounds, _current_arena_id(), _friendly_fire, names, colors, _team_handicap)
+	MatchConfig.configure(_current_mode_id(), players, rounds, _current_arena_id(), _friendly_fire, names, colors, _team_handicap, _pick_timeout_seconds())
 	get_tree().change_scene_to_file(MATCH_SCENE)
+
+
+## The staged card-pick timeout in seconds: the fixed default when enabled, else
+## 0 (no timeout). Pure mapping from the toggle to what MatchConfig stores (#169).
+func _pick_timeout_seconds() -> float:
+	return CardPickMode.DEFAULT_TIMEOUT if _pick_timeout_enabled else 0.0
+
+
+func _on_pick_timeout_toggled(pressed: bool) -> void:
+	_pick_timeout_enabled = pressed
 
 
 func _on_back_pressed() -> void:
@@ -252,7 +275,7 @@ func _on_overwrite_confirmed() -> void:
 ## entry.
 func _do_save_config(name: String) -> void:
 	var data := MatchConfig.to_dict(
-		_current_mode_id(), int(_rounds_picker.value), _current_arena_id(), _friendly_fire, _team_handicap)
+		_current_mode_id(), int(_rounds_picker.value), _current_arena_id(), _friendly_fire, _team_handicap, _pick_timeout_seconds())
 	if MatchConfigStore.save(name, data) != OK:
 		return
 	_refresh_config_list()
@@ -281,6 +304,10 @@ func _apply_config(norm: Dictionary) -> void:
 	_rounds_picker.value = int(norm["wins_needed"])
 	_friendly_fire = bool(norm["friendly_fire"])
 	_team_handicap = bool(norm["team_handicap"])
+	# Reflect the loaded card-pick timeout into the toggle (#169).
+	_pick_timeout_enabled = float(norm["pick_timeout"]) > 0.0
+	if _pick_timeout_toggle != null:
+		_pick_timeout_toggle.button_pressed = _pick_timeout_enabled
 	# A loaded mode may differ from the previous one; re-evaluate the submenu.
 	_refresh_mode_options_availability()
 
